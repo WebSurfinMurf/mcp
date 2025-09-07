@@ -1,0 +1,63 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "-v", "/workspace:/workspace", "-v", "/home/administrator/projects:/projects", "mcp/filesystem", "/workspace", "/projects"]
+    },
+    "memory": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/memory-postgres/src/server.js"],
+      "env": {
+        "POSTGRES_URL": "postgresql://admin:Pass123qp@postgres:5432/postgres"
+      }
+    },
+    "fetch": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "mcp/fetch"]
+    },
+    "monitoring": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/monitoring/src/index.js"],
+      "env": {
+        "LOKI_URL": "http://loki:3100",
+        "NETDATA_URL": "http://netdata:19999"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": ""
+      }
+    },
+    "postgres": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "-e", "PGHOST=postgres", "-e", "PGPORT=5432", "-e", "PGUSER=admin", "-e", "PGPASSWORD=", "-e", "PGDATABASE=postgres", "--network=postgres-net", "crystaldba/postgres-mcp"]
+    },
+    "n8n": {
+      "command": "/home/administrator/projects/mcp/n8n/mcp-wrapper.sh",
+      "env": {
+        "N8N_API_URL": "http://n8n:5678",
+        "N8N_API_KEY": ""
+      }
+    },
+    "playwright": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/playwright/dist/index.js"],
+      "env": {
+        "PLAYWRIGHT_API_URL": "http://playwright:3000"
+      }
+    },
+    "timescaledb": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/timescaledb/build/index.js"],
+      "env": {
+        "PGHOST": "timescaledb",
+        "PGPORT": "5432",
+        "PGUSER": "admin",
+        "PGPASSWORD": "",
+        "PGDATABASE": "postgres"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "-v", "/workspace:/workspace", "-v", "/home/administrator/projects:/projects", "mcp/filesystem", "/workspace", "/projects"]
+    },
+    "monitoring": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/monitoring/src/index.js"],
+      "env": {
+        "LOKI_URL": "http://loki:3100",
+        "NETDATA_URL": "http://netdata:19999"
+      }
+    }
+  }
+}
