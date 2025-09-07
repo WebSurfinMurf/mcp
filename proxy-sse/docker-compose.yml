@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  mcp-proxy-sse:
+    image: mcp-proxy-custom:latest
+    container_name: mcp-proxy-sse
+    restart: unless-stopped
+    networks:
+      - litellm-net
+      # Also need postgres-net for database MCPs
+      - postgres-net
+    # NO PORTS EXPOSED - only accessible via Docker network
+    # ports:
+    #   - "8585:8080"  # REMOVED for security
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /workspace:/workspace
+      - /home/administrator:/home/administrator:rw
+      - /home/administrator/projects:/home/administrator/projects:ro
+      - /home/administrator/secrets:/home/administrator/secrets:ro
+      - ./servers-production.json:/app/servers.json:ro
+    command: ["--host", "0.0.0.0", "--port", "8080", "--named-server-config", "/app/servers.json"]
+    environment:
+      - MCP_PROXY_MODE=production
+
+networks:
+  litellm-net:
+    external: true
+  postgres-net:
+    external: true

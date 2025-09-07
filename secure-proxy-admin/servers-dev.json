@@ -1,10 +1,5 @@
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "bash",
-      "args": ["/home/administrator/projects/mcp/filesystem/mcp-wrapper-admin.sh"],
-      "description": "File system operations - Full administrator access"
-    },
     "monitoring": {
       "command": "node",
       "args": ["/home/administrator/projects/mcp/monitoring/src/index.js"],
@@ -12,7 +7,7 @@
         "LOKI_URL": "http://loki:3100",
         "NETDATA_URL": "http://netdata:19999"
       },
-      "description": "System monitoring and logs"
+      "description": "System monitoring and logs (read-only)"
     },
     "fetch": {
       "command": "bash",
