@@ -1,0 +1,191 @@
+version: '3.8'
+
+networks:
+  mcp-internal:
+    driver: bridge
+    name: mcp-internal
+  traefik-proxy:
+    external: true
+  postgres-net:
+    external: true
+  loki-net:
+    name: loki-net
+    driver: bridge
+    external: false
+
+x-common-settings: &common
+  restart: unless-stopped
+  networks:
+    - mcp-internal
+    - traefik-proxy
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+      labels: "com.docker.compose.service,com.docker.compose.project"
+
+services:
+  # ============== PRODUCTION MCP SERVICES ==============
+  
+  # 1. MCP Filesystem (Port 8501)
+  mcp-filesystem:
+    <<: *common
+    image: mcp/filesystem:latest
+    container_name: mcp-filesystem-prod
+    ports:
+      - "8501:8080"
+    volumes:
+      - /workspace:/workspace:ro
+      - /home/administrator/projects:/projects:ro
+    command: ["/workspace", "/projects"]
+    environment:
+      - MCP_MODE=stdio
+    labels:
+      - "com.mcp.type=filesystem"
+      - "com.mcp.tools=11"
+      - "com.mcp.phase=production"
+    healthcheck:
+      test: ["CMD", "echo", "healthy"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # 2. MCP Monitoring (Port 8502)
+  mcp-monitoring:
+    <<: *common
+    build:
+      context: ./compose/monitoring
+      dockerfile: Dockerfile.sse
+    container_name: mcp-monitoring-prod
+    ports:
+      - "8502:8080"
+    networks:
+      - mcp-internal
+      - loki-net
+      - traefik-proxy
+    environment:
+      - LOKI_URL=http://loki:3100
+      - NETDATA_URL=http://netdata:19999
+      - PORT=8080
+      - HOST=0.0.0.0
+    labels:
+      - "com.mcp.type=monitoring"
+      - "com.mcp.tools=5"
+      - "com.mcp.phase=production"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # 3. MCP Fetch (Port 8503)
+  mcp-fetch:
+    <<: *common
+    image: mcp/fetch:latest
+    container_name: mcp-fetch-prod
+    ports:
+      - "8503:8080"
+    environment:
+      - MCP_MODE=stdio
+    labels:
+      - "com.mcp.type=fetch"
+      - "com.mcp.tools=1"
+      - "com.mcp.phase=production"
+    healthcheck:
+      test: ["CMD", "echo", "healthy"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # 4. MCP PostgreSQL (Port 8504)
+  mcp-postgres:
+    <<: *common
+    image: crystaldba/postgres-mcp:latest
+    container_name: mcp-postgres-prod
+    ports:
+      - "8504:8080"
+    networks:
+      - mcp-internal
+      - postgres-net
+      - traefik-proxy
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=admin
+      - PGPASSWORD=${POSTGRES_PASSWORD:-Pass123qp}
+      - PGDATABASE=postgres
+      - MCP_MODE=stdio
+    labels:
+      - "com.mcp.type=postgres"
+      - "com.mcp.tools=6"
+      - "com.mcp.phase=production"
+    healthcheck:
+      test: ["CMD", "echo", "healthy"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # 5. MCP Memory (Port 8505) - Placeholder for now
+  # mcp-memory:
+  #   <<: *common
+  #   build:
+  #     context: ./compose/memory
+  #     dockerfile: Dockerfile
+  #   container_name: mcp-memory-prod
+  #   ports:
+  #     - "8505:8080"
+  #   networks:
+  #     - mcp-internal
+  #     - postgres-net
+  #     - traefik-proxy
+  #   environment:
+  #     - PGHOST=postgres
+  #     - PGPORT=5432
+  #     - PGUSER=memory_user
+  #     - PGPASSWORD=${MEMORY_PASSWORD}
+  #     - PGDATABASE=memory_db
+  #   labels:
+  #     - "com.mcp.type=memory"
+  #     - "com.mcp.phase=production"
+
+  # ============== TRANSITIONAL PROXY (TO BE REMOVED) ==============
+  
+  # Keep the working proxy for now as fallback
+  mcp-proxy-fallback:
+    <<: *common
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    container_name: mcp-proxy-fallback
+    ports:
+      - "8590:8080"  # Fallback port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /workspace:/workspace
+      - /home/administrator/projects:/home/administrator/projects:ro
+      - ./proxy/servers-minimal.json:/app/servers.json:ro
+    environment:
+      - LOKI_URL=http://loki:3100
+      - NETDATA_URL=http://netdata:19999
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--named-server-config"
+      - "/app/servers.json"
+    networks:
+      - mcp-internal
+      - traefik-proxy
+      - loki-net
+    labels:
+      - "com.mcp.type=proxy"
+      - "com.mcp.role=fallback"
+      - "com.mcp.phase=transitional"
+
+volumes:
+  mcp-data:
+    name: mcp-data
+  mcp-sessions:
+    name: mcp-sessions

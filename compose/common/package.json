@@ -1,0 +1,16 @@
+{
+  "name": "mcp-sse-wrapper",
+  "version": "1.0.0",
+  "description": "SSE wrapper for stdio-based MCP servers",
+  "main": "sse-wrapper.js",
+  "scripts": {
+    "start": "node sse-wrapper.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
