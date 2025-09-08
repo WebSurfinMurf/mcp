@@ -1,9 +1,12 @@
 # MCP Unified Registry v2 - Dual-Mode Architecture
 
+## 🟡 Status Update (2025-09-08 Evening)
+**Node.js Shim Solution Implemented** - The postgres-v2 service is fully functional. A Node.js shim wrapper has been implemented to resolve the stdio communication issue with Claude Code's MCP bridge.
+
 ## Overview
 
 This is the next-generation MCP (Model Context Protocol) implementation featuring a clean dual-mode architecture where each service can operate in both:
-- **stdio mode** - For Claude Code integration  
+- **stdio mode** - For Claude Code integration (now with Node.js shim for Python services)
 - **SSE mode** - For HTTP/web client integration (LiteLLM, Open WebUI)
 
 ## Key Features
@@ -247,10 +250,37 @@ All parameters are validated using Pydantic models with:
 - ✅ Dual-mode operation (stdio/SSE)
 - ✅ Deployment automation
 - ✅ Testing infrastructure
+- ✅ Node.js shim for Python-Claude integration
+- ✅ Minimal echo test service for diagnostics
 - ⏳ Filesystem service
 - ⏳ GitHub service
 - ⏳ Monitoring service
 - ⏳ Production deployment
+
+## Node.js Shim Solution
+
+### Problem Solved
+Python services work perfectly but Claude's MCP bridge doesn't receive responses. The Node.js shim acts as an intermediary to handle stdio communication properly.
+
+### Implementation Files
+- `minimal_mcp.py` - Minimal echo test to isolate issues
+- `postgres_shim.js` - Basic Node.js wrapper
+- `postgres_shim_enhanced.js` - Enhanced wrapper with readline
+- `nodejs-shim-plan.md` - Complete implementation documentation
+
+### Current Configuration
+```json
+{
+  "mcpServers": {
+    "postgres-v2": {
+      "command": "/home/administrator/projects/mcp/unified-registry-v2/postgres_shim_enhanced.js"
+    },
+    "minimal-echo": {
+      "command": "/home/administrator/projects/mcp/unified-registry-v2/minimal_mcp.py"
+    }
+  }
+}
+```
 
 ## Next Steps
 

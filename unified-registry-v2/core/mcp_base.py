@@ -196,14 +196,23 @@ class MCPService:
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
         
+        # Process the tool call
         result = self.process_tool_call(tool_name, arguments, request_id)
         
-        # If the result is already a JSON-RPC response, return it
-        if "jsonrpc" in result:
+        # If it's an error response, return as-is
+        if "error" in result:
             return result
         
-        # Otherwise wrap it
-        return self.wrap_json_rpc_response({"content": [{"type": "text", "text": json.dumps(result)}]}, request_id)
+        # For successful responses, extract the result and wrap in content structure
+        if "result" in result:
+            # The tool handler returns the raw data, wrap it for Claude
+            tool_result = result["result"]
+            return self.wrap_json_rpc_response({
+                "content": [{"type": "text", "text": json.dumps(tool_result)}]
+            }, request_id)
+        
+        # Fallback (shouldn't happen)
+        return result
     
     def process_json_rpc_request(self, request: Dict) -> Dict:
         """Process a single JSON-RPC request"""

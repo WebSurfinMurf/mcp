@@ -173,6 +173,13 @@ python3 test_direct.py
 - Fixed Python boolean values in tool definitions
 - Documented skipped services (fetch, memory, docker-hub)
 
+### 2025-09-08 Evening: Node.js Shim Solution for v2
+- Identified Python-MCP bridge communication issue in unified-registry-v2
+- Implemented Node.js shim wrapper to handle stdio communication
+- Added minimal echo test for diagnostics
+- Updated postgres-v2 to use enhanced shim wrapper
+- Solution ready for testing in `/home/administrator/projects/mcp/unified-registry-v2/`
+
 ### Key Decisions
 - Use Docker containers for MCP service execution (not direct processes)
 - Single registry file for all tool definitions
