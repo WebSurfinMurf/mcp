@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "postgres-v2": {
+      "command": "/home/administrator/projects/mcp/unified-registry-v2/deploy.sh",
+      "args": ["run", "postgres", "stdio"],
+      "env": {
+        "DATABASE_URL": "postgresql://admin:Pass123qp@localhost:5432/postgres"
+      }
+    }
+  }
+}
