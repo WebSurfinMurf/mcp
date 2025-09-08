@@ -1,10 +1,10 @@
 # MCP Infrastructure - Model Context Protocol Services
 
-*Last Updated: 2025-09-07*
-*Status: ✅ Fully Operational and Standardized*
+*Last Updated: 2025-09-08*
+*Status: ✅ Fully Operational with Unified Registry*
 
 ## Overview
-Centralized directory for all MCP (Model Context Protocol) services that provide Claude Code and other tools with programmatic capabilities via a unified SSE proxy gateway.
+Centralized directory for all MCP (Model Context Protocol) services that provide Claude Code and other tools with programmatic capabilities. Now features a **Unified MCP Registry** that serves as a single source of truth for all MCP tools.
 
 ## Architecture
 
@@ -18,6 +18,7 @@ Centralized directory for all MCP (Model Context Protocol) services that provide
 ### Service Structure
 ```
 /home/administrator/projects/mcp/
+├── unified-registry/   # ⭐ NEW: Single source of truth for all MCP tools
 ├── proxy-sse/          # SSE gateway proxy
 ├── filesystem/         # File operations
 ├── fetch/             # Web content fetching
@@ -27,6 +28,38 @@ Centralized directory for all MCP (Model Context Protocol) services that provide
 ├── n8n/              # Workflow automation
 ├── playwright/        # Browser automation
 └── memory-postgres/   # Vector memory (currently broken)
+```
+
+## Unified MCP Registry (NEW) ⭐
+
+### Overview
+- **Location**: `/home/administrator/projects/mcp/unified-registry/`
+- **Purpose**: Central registry for all MCP tool definitions
+- **Status**: ✅ Phase 2 Complete - 7 services, 24 tools
+- **Benefits**: 
+  - Single source of truth for Claude Code and LiteLLM
+  - Consistent `service_tool` naming convention
+  - No duplication of tool definitions
+  - Platform-agnostic adapters
+
+### Integrated Services (24 tools)
+1. **filesystem** (4 tools) - File operations
+2. **postgres** (2 tools) - Database queries
+3. **github** (3 tools) - GitHub API
+4. **monitoring** (5 tools) - Logs & metrics
+5. **n8n** (3 tools) - Workflow automation
+6. **playwright** (4 tools) - Browser automation
+7. **timescaledb** (3 tools) - Time-series DB
+
+### Claude Code Integration
+```json
+// Add to ~/.config/claude/mcp_servers.json
+{
+  "unified-tools": {
+    "command": "/home/administrator/projects/mcp/unified-registry/run_claude_adapter.sh",
+    "args": []
+  }
+}
 ```
 
 ## Naming Standards

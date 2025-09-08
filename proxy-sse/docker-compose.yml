@@ -9,9 +9,9 @@ services:
       - litellm-net
       # Also need postgres-net for database MCPs
       - postgres-net
-    # NO PORTS EXPOSED - only accessible via Docker network
-    # ports:
-    #   - "8585:8080"  # REMOVED for security
+    # Expose port for unified-tools access from host
+    ports:
+      - "8585:8080"  # Required for unified-tools MCP adapter
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /workspace:/workspace
