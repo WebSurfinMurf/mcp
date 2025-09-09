@@ -2,7 +2,8 @@
 
 **Location**: `/home/administrator/projects/mcp/dualdeploy/`  
 **Created**: 2025-09-08  
-**Status**: ✅ Clean implementation ready for testing  
+**Last Updated**: 2025-09-08 11:45 AM  
+**Status**: ✅ DEPLOYED - Registered with Claude Code, Ready for Testing  
 **Architecture**: Dual-mode MCP services (stdio for Claude, SSE for web)
 
 ## Overview
@@ -75,12 +76,40 @@ Using postgres-v2, execute SQL: SELECT version()
 - **Connection Pool**: 2-10 connections
 - **Timeout**: 30 seconds default
 
+## Current Deployment Status (2025-09-08)
+
+### ✅ Successfully Completed
+1. **Clean Directory Structure**: Created at `/home/administrator/projects/mcp/dualdeploy/`
+2. **Virtual Environment**: Set up with all dependencies installed
+3. **DateTime Serialization Fix**: Added `DateTimeEncoder` class to handle datetime/Decimal types
+4. **Node.js Shim**: Updated to use venv Python for proper module loading
+5. **Claude Code Registration**: postgres-v2 registered and pointing to new location
+6. **Configuration Updated**: `~/.config/claude/mcp-settings.json` points to `/mcp/dualdeploy/shims/postgres.js`
+
+### 🔄 Ready for Testing
+- **Service Name**: postgres-v2
+- **Status**: Registered with Claude Code
+- **Path**: `/home/administrator/projects/mcp/dualdeploy/`
+- **Next Step**: Restart Claude Code and test
+
+### Test Commands After Restart
+```
+# Basic test
+Using postgres-v2, list all databases
+
+# DateTime fix test
+Using postgres-v2, execute SQL: SELECT now(), current_timestamp
+
+# Query test
+Using postgres-v2, execute SQL: SELECT version()
+```
+
 ## Fixed Issues
 
 ### ✅ DateTime Serialization
 - **Problem**: Queries with datetime fields caused JSON serialization errors
 - **Solution**: Added `DateTimeEncoder` class in `mcp_base.py`
-- **Status**: Fixed - datetime and Decimal types now serialize correctly
+- **Status**: FIXED - datetime and Decimal types now serialize correctly
 
 ### ⏳ Pending Issues
 1. **Cross-Database Connections**: Need to improve database switching logic
