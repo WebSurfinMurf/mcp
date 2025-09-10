@@ -462,9 +462,16 @@ def main():
     parser = argparse.ArgumentParser(description="PostgreSQL MCP Service")
     parser.add_argument("--mode", choices=["stdio", "sse"], default="stdio",
                         help="Run mode: stdio for Claude Code, sse for web clients")
+    parser.add_argument("--port", type=int, default=8011,
+                        help="Port for SSE mode (default: 8011)")
     parser.add_argument("--config", type=str, help="Path to configuration file")
     
     args = parser.parse_args()
+    
+    # Set port in environment for SSE mode
+    if args.mode == "sse":
+        import os
+        os.environ["MCP_SSE_PORT"] = str(args.port)
     
     # Create and run service
     service = PostgreSQLService(args.config)

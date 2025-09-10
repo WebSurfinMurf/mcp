@@ -348,10 +348,15 @@ class MCPService:
         
         # Run the FastAPI server
         host = self.config.get("sse", {}).get("host", "0.0.0.0")
-        port = int(self.config.get("sse", {}).get("port", 8000))
+        # Check environment variable first, then config, then default
+        port = int(os.environ.get("MCP_SSE_PORT", self.config.get("sse", {}).get("port", 8000)))
         
         self.logger.info(f"Starting SSE server on {host}:{port}")
-        await uvicorn.run(app, host=host, port=port)
+        
+        # Use uvicorn.Server directly to avoid nested asyncio.run()
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        server = uvicorn.Server(config)
+        await server.serve()
     
     def run(self, mode: str = "stdio"):
         """Run the service in specified mode"""

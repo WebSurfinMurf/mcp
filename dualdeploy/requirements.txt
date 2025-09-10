@@ -8,6 +8,12 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 aiofiles==23.2.1
 
+# Fetch service dependencies
+requests==2.31.0
+beautifulsoup4==4.12.3
+html2text==2020.1.16
+lxml==4.9.4
+
 # Development tools (optional)
 pytest==7.4.3
 pytest-asyncio==0.21.1

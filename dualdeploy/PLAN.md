@@ -1,13 +1,27 @@
 # MCP Dualdeploy Migration Plan
 
 **Created**: 2025-09-09  
-**Updated**: 2025-09-09 (with expert feedback)  
+**Updated**: 2025-09-09 (fetch-v2 registered with Claude Code)  
 **Purpose**: Complete migration of all MCP services to dualdeploy architecture  
-**Status**: ✅ Plan Validated - Ready for Implementation  
+**Status**: ✅ Plan Validated - Implementation in Progress  
 
 ## Executive Summary
 
 Migrate all 7 active MCP services from proxy-sse to the dualdeploy dual-mode architecture, allowing each service to operate in both stdio mode (for Claude Code) and SSE mode (for LiteLLM/Open WebUI). This will replace the complex proxy-sse gateway with a cleaner, unified architecture.
+
+### Implementation Progress (2025-09-09)
+| Service | Status | Notes |
+|---------|--------|-------|
+| postgres | ✅ Complete | Working as postgres-v2, registered with Claude Code, **deployed in Docker on litellm-net** |
+| fetch | ✅ Complete | Native Python, HTML→markdown working, **registered as fetch-v2**, **deployed in Docker on litellm-net** |
+| filesystem | 🔄 Next | Security-critical implementation |
+| github | ⏳ Pending | Skipped for now (more complex) |
+| timescaledb | ⏳ Pending | Will leverage postgres patterns |
+| monitoring | ⏳ Pending | API-based service |
+| n8n | ⏳ Pending | API-based service |
+| playwright | ⏳ Pending | Node.js wrapper approach |
+
+**Progress**: 2/8 services complete, registered, and deployed in Docker (25%)
 
 ### Key Decisions (Post-Review)
 - ✅ **Native Python implementation** for all services except Playwright
@@ -133,21 +147,36 @@ For services that must use existing implementations:
 2. What paths should be allowed by default?
 3. Should we support the same mount points as Docker version?
 
-#### 1.2 Fetch Service
+#### 1.2 Fetch Service ✅ COMPLETE (2025-09-09)
 **Approach**: Native Python with `requests`
-```python
-# Simple implementation
-import requests
-from bs4 import BeautifulSoup  # For HTML to markdown
+**Status**: Fully implemented, tested, and **registered with Claude Code**
+**Implementation**: 
+- Created `services/mcp_fetch.py` with native Python
+- Uses `requests` for HTTP, `BeautifulSoup` + `html2text` for markdown conversion
+- Full Pydantic validation models in `fetch_models.py`
+- Node.js shim at `shims/fetch.js`
+- **Registered**: Added to `~/.config/claude/mcp-settings.json` as `fetch-v2`
+
+**Tools Implemented**:
+- `fetch` - Full HTTP client with:
+  - All HTTP methods (GET, POST, PUT, DELETE, etc.)
+  - HTML to markdown conversion
+  - Redirect following with tracking
+  - Custom headers and request bodies
+  - Timeout and error handling
+
+**Test Results**:
+- ✅ Stdio mode working (tested with httpbin.org and example.com)
+- ✅ SSE mode initializes correctly
+- ✅ HTML to markdown conversion verified
+- ✅ JSON responses handled properly
+- ✅ Registered with Claude Code (2025-09-09)
+
+**Claude Code Usage**:
 ```
-
-**Tools**:
-- `fetch` - GET request with markdown conversion
-
-**Questions**:
-1. Should we add caching like the Docker version?
-2. Rate limiting needed?
-3. User-agent string to use?
+Using fetch-v2, fetch https://example.com
+Using fetch-v2, fetch https://api.github.com/users/anthropics
+```
 
 #### 1.3 TimescaleDB Service
 **Approach**: Extend PostgreSQL service
@@ -604,3 +633,49 @@ The migration can now proceed with confidence. The strategy is sound, risks are 
 ---
 
 *Plan validated 2025-09-09. Implementation can begin immediately following the prioritized service order.*
+## Docker Deployment Update (2025-09-09)
+
+### Successfully Deployed to Docker
+
+Both postgres-v2 and fetch-v2 services have been successfully deployed in Docker containers on the litellm-net network.
+
+#### Container Details
+| Service | Container Name | Network | Port | LiteLLM URL |
+|---------|---------------|---------|------|-------------|
+| PostgreSQL | mcp-postgres-v2 | litellm-net (192.168.224.9) | 8011 | `http://mcp-postgres-v2:8011/sse` |
+| Fetch | mcp-fetch-v2 | litellm-net (192.168.224.8) | 8012 | `http://mcp-fetch-v2:8012/sse` |
+
+#### Key Improvements from Docker Deployment
+1. **Security**: Services isolated from host system, only accessible within Docker network
+2. **Performance**: Direct container-to-container communication eliminates host network latency
+3. **Reliability**: No DNS resolution issues or host networking complexities
+4. **Management**: Easy deployment with docker-compose, automatic restart on failure
+
+#### Files Created
+- `Dockerfile`: Python 3.12-slim base image with all required dependencies
+- `docker-compose.yml`: Service orchestration with proper network configuration
+
+#### Commands for Management
+```bash
+# Start services
+docker compose up -d
+
+# View logs
+docker logs mcp-postgres-v2
+docker logs mcp-fetch-v2
+
+# Stop services
+docker compose down
+
+# Rebuild after code changes
+docker compose build
+docker compose up -d
+```
+
+### Next Steps
+- Test integration with LiteLLM using the new container URLs
+- Verify performance improvements over host-based deployment
+- Continue implementing remaining services (filesystem, monitoring, etc.)
+
+---
+*Docker deployment completed 2025-09-09 02:39 UTC*

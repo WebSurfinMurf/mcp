@@ -110,8 +110,22 @@ do_run() {
         print_status "Starting $service in stdio mode..."
         exec python "$SERVICE_SCRIPT" --mode stdio
     elif [ "$mode" = "sse" ]; then
-        print_status "Starting $service in SSE mode on port 8001..."
-        exec python "$SERVICE_SCRIPT" --mode sse --port 8001
+        # Different ports for different services (avoiding conflicts)
+        case "$service" in
+            postgres)
+                PORT=8011
+                ;;
+            fetch)
+                PORT=8012
+                ;;
+            *)
+                PORT=8010
+                ;;
+        esac
+        print_status "Starting $service in SSE mode on port $PORT..."
+        # Pass port as environment variable (works for all services)
+        export MCP_SSE_PORT=$PORT
+        exec python "$SERVICE_SCRIPT" --mode sse
     else
         print_error "Invalid mode: $mode (use stdio or sse)"
         exit 1

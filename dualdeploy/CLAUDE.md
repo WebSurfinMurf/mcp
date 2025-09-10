@@ -10,6 +10,10 @@
 
 Clean implementation of the dual-mode MCP architecture where each service can operate in both stdio mode (for Claude Code) and SSE mode (for web clients like LiteLLM/Open WebUI). This replaces the complex unified-tools adapter approach.
 
+### Services Implemented
+1. **PostgreSQL** (postgres-v2) - ✅ Complete, 5 tools, fully tested
+2. **Fetch** - ✅ Complete (2025-09-09), HTTP client with HTML→markdown conversion
+
 ## Architecture
 
 ### Directory Structure
@@ -58,9 +62,30 @@ cd /home/administrator/projects/mcp/dualdeploy
 
 ### 4. Use in Claude
 ```
+# PostgreSQL service
 Using postgres-v2, list all databases
 Using postgres-v2, execute SQL: SELECT version()
+
+# Fetch service (after registration)
+Using fetch-v2, fetch https://example.com
+Using fetch-v2, fetch https://api.github.com/users/anthropics
 ```
+
+## Fetch Service
+
+### Available Tools (1)
+1. **fetch** - Fetch web content with optional HTML to markdown conversion
+   - Supports all HTTP methods (GET, POST, PUT, DELETE, etc.)
+   - Automatic HTML to markdown conversion
+   - Custom headers and request bodies
+   - Redirect following with tracking
+   - Timeout and error handling
+
+### Configuration
+- No special configuration needed
+- Works with any HTTP/HTTPS URL
+- Default timeout: 30 seconds
+- Default User-Agent: MCP-Fetch/1.0
 
 ## PostgreSQL Service
 
