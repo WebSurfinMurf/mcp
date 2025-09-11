@@ -1,0 +1,35 @@
+# Base Docker image for MCP SSE services
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements-base.txt .
+RUN pip install --no-cache-dir -r requirements-base.txt
+
+# Create non-root user
+RUN groupadd -r mcpuser && useradd -r -g mcpuser mcpuser
+
+# Copy core framework
+COPY core/ ./core/
+
+# Set ownership
+RUN chown -R mcpuser:mcpuser /app
+
+# Switch to non-root user
+USER mcpuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${SERVICE_PORT:-8000}/health || exit 1
+
+# Default command (should be overridden by services)
+CMD ["python", "-m", "uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8000"]

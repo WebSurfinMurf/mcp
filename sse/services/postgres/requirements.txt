@@ -1,0 +1,14 @@
+# PostgreSQL MCP SSE Service Requirements
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# PostgreSQL drivers
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# HTTP client for health checks
+httpx==0.25.2
+
+# Utilities
+python-dotenv==1.0.0

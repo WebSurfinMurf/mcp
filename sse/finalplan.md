@@ -15,9 +15,10 @@ This plan outlines a complete refactoring of the MCP (Model Context Protocol) ar
 2. **Container-First**: All services run in Docker containers
 3. **Network Isolation**: Services isolated on `litellm-net` 
 4. **Consistent Naming**: Simple names like `mcp-postgres`, `mcp-fetch`
-5. **Protocol Compliance**: MCP 2024-11-05 specification
+5. **Protocol Compliance**: MCP 2025-06-18 specification with output schemas and enhanced security
 6. **Auto-Discovery**: Services self-register capabilities
 7. **Stateless Design**: No session management required
+8. **Secure Secrets**: Environment variables stored in `/home/administrator/secrets/sse.env`
 
 ## Architecture Overview
 
@@ -50,6 +51,7 @@ This plan outlines a complete refactoring of the MCP (Model Context Protocol) ar
 ├── docker-compose.yml     # Orchestration for all services
 ├── Dockerfile.base        # Base image with common dependencies
 ├── deploy.sh              # Master deployment script
+├── .gitignore             # Excludes secrets and local files
 ├── config/
 │   ├── services.yaml      # Service registry and ports
 │   └── networks.yaml      # Network configuration
@@ -158,20 +160,32 @@ class MCPSSEServer:
         """Register a tool with the service"""
         self.tools[name] = {
             "handler": handler,
-            "schema": schema,
+            "schema": schema,  # CRITICAL for validation and discovery
             "description": description
         }
+    
+    def get_endpoints(self) -> Dict:
+        """Generate the endpoint capabilities structure."""
+        tool_list = []
+        for name, tool_data in self.tools.items():
+            tool_list.append({
+                "name": f"tools/{name}",
+                "description": tool_data["description"],
+                "inputSchema": tool_data["schema"].schema()  # Generate JSON schema from Pydantic model
+            })
+        return {"endpoints": tool_list}
     
     async def sse_stream(self, request: Request):
         """Generate SSE stream for client connections"""
         async def generate():
-            # Send connection event
-            yield f"event: connection\n"
-            yield f"data: {json.dumps(self.get_service_info())}\n\n"
-            
-            # Send endpoint capabilities
-            yield f"event: endpoint\n"
-            yield f"data: {json.dumps(self.get_endpoints())}\n\n"
+            try:
+                # Send connection event
+                yield f"event: connection\n"
+                yield f"data: {json.dumps(self.get_service_info())}\n\n"
+                
+                # Send endpoint capabilities with schemas
+                yield f"event: endpoint\n"
+                yield f"data: {json.dumps(self.get_endpoints())}\n\n"
             
             # Keep connection alive
             while True:
@@ -205,8 +219,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Load configuration
-source config/services.yaml
+# Load environment variables from secure location
+if [ -f /home/administrator/projects/secrets/sse.env ]; then
+    export $(cat /home/administrator/projects/secrets/sse.env | xargs)
+fi
 
 # Commands
 case "$1" in
@@ -268,8 +284,9 @@ services:
       context: .
       dockerfile: services/postgres/Dockerfile
     container_name: mcp-postgres
+    env_file:
+      - /home/administrator/projects/secrets/sse.env
     environment:
-      - DATABASE_URL=postgresql://admin:Pass123qp@postgres:5432/postgres
       - SERVICE_PORT=8001
     ports:
       - "127.0.0.1:8001:8001"
@@ -288,6 +305,8 @@ services:
       context: .
       dockerfile: services/fetch/Dockerfile
     container_name: mcp-fetch
+    env_file:
+      - /home/administrator/projects/secrets/sse.env
     environment:
       - SERVICE_PORT=8002
     ports:
@@ -306,6 +325,8 @@ services:
       context: .
       dockerfile: services/filesystem/Dockerfile
     container_name: mcp-filesystem
+    env_file:
+      - /home/administrator/projects/secrets/sse.env
     environment:
       - SERVICE_PORT=8003
       - ALLOWED_PATHS=/workspace,/shared
@@ -418,6 +439,35 @@ networks:
 5. **File Access Control**: Restricted filesystem paths
 6. **Rate Limiting**: Built-in request throttling
 7. **Authentication Ready**: Can add JWT/OAuth2 later
+8. **Secure Secrets Management**: All sensitive environment variables stored in `/home/administrator/projects/secrets/sse.env`
+
+### Environment Variables Management
+
+All sensitive configuration is stored in `/home/administrator/projects/secrets/sse.env`, which is a secure location on the system. This file is never committed to version control.
+
+**Example `/home/administrator/projects/secrets/sse.env`:**
+```bash
+# Database Configuration
+DATABASE_URL=postgresql://admin:Pass123qp@postgres:5432/postgres
+
+# API Keys
+GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+OPENAI_API_KEY=sk-xxxxxxxxxxxx
+
+# Service Configuration
+LOG_LEVEL=INFO
+MAX_CONNECTIONS=10
+```
+
+**Docker Compose Integration:**
+```yaml
+services:
+  mcp-postgres:
+    env_file:
+      - /home/administrator/projects/secrets/sse.env  # Load all secrets
+    environment:
+      - SERVICE_PORT=8001  # Non-sensitive config can stay here
+```
 
 ## Performance Optimizations
 
@@ -468,9 +518,10 @@ networks:
 
 ### Day 1-2: Foundation
 - Set up directory structure ✓
-- Create base SSE server class
-- Implement protocol handlers
+- Create base SSE server class with corrected `register_tool` method
+- Implement protocol handlers with proper schema validation
 - Set up Docker base image
+- Create `/home/administrator/projects/secrets/sse.env` template
 
 ### Day 3-4: Core Services
 - Port PostgreSQL service
@@ -489,9 +540,27 @@ networks:
 - Deploy to production
 - Monitor and iterate
 
+## Validation from AI Review
+
+This plan has been validated by external AI review with the following key points:
+
+1. **Architectural Superiority**: The SSE-only approach is confirmed as vastly simpler and more robust than dual-mode
+2. **Production-Ready Design**: The container-first approach with health checks creates a self-healing system
+3. **Excellent Developer Experience**: Simple `deploy.sh` interface abstracts complexity
+4. **Security Best Practices**: Proper secrets management via `/home/administrator/secrets/sse.env`
+
+### Critical Implementation Notes
+
+1. **Prioritize Core Framework**: Build `Dockerfile.base` and `mcp_sse.py` base class first
+2. **Schema Validation**: The `register_tool` method must include Pydantic schema for automatic validation
+3. **Error Handling**: Add global exception handler in FastAPI to wrap errors in MCP SSE format
+4. **Secrets Management**: Never commit secrets; always use the secure env file location
+
 ## Conclusion
 
 This SSE-only architecture eliminates the complexity of dual-mode operation while providing a robust, scalable foundation for MCP services. The focus on containerization, consistent interfaces, and web-native protocols ensures seamless integration with modern AI platforms.
+
+The plan has been **validated and is ready for implementation**.
 
 **Key Benefits:**
 - Simplified architecture (no stdio complexity)

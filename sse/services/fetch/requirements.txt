@@ -1,0 +1,16 @@
+# Fetch MCP SSE Service Requirements
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# HTTP and web content fetching
+httpx==0.25.2
+beautifulsoup4==4.12.2
+markdownify==0.12.1
+
+# SSL and certificate handling
+certifi==2024.8.30
+urllib3==2.0.7
+
+# Utilities
+python-dotenv==1.0.0
