@@ -1,0 +1,29 @@
+FROM node:20-alpine
+
+# Install dependencies for healthcheck
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Copy everything
+COPY . .
+
+# Install all dependencies
+RUN npm install && \
+    npm install express uuid
+
+# Set environment variables with defaults
+ENV LOKI_URL=http://loki:3100
+ENV NETDATA_URL=http://netdata:19999
+ENV PORT=8080
+ENV HOST=0.0.0.0
+
+# Expose port for SSE
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Run the MCP server with SSE wrapper
+CMD ["node", "sse-wrapper.cjs", "node", "src/index.js"]

@@ -1,0 +1,57 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--name", "mcp-filesystem-session",
+        "-v", "/workspace:/workspace",
+        "-v", "/home/administrator/projects:/projects",
+        "mcp/filesystem",
+        "/workspace", "/projects"
+      ],
+      "description": "File system operations"
+    },
+    "monitoring": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/monitoring/src/index.js"],
+      "env": {
+        "LOKI_URL": "http://loki:3100",
+        "NETDATA_URL": "http://netdata:19999"
+      },
+      "description": "System monitoring and logs"
+    },
+    "fetch": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--name", "mcp-fetch-session",
+        "mcp/fetch"
+      ],
+      "description": "Web content fetching"
+    },
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--name", "mcp-postgres-session",
+        "--network", "postgres-net",
+        "-e", "DATABASE_URI=postgresql://admin:Pass123qp@postgres:5432/postgres",
+        "crystaldba/postgres-mcp"
+      ],
+      "description": "PostgreSQL database operations"
+    },
+    "memory": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/memory-postgres/src/server.js"],
+      "env": {
+        "PGHOST": "postgres",
+        "PGPORT": "5432",
+        "PGUSER": "memory_user",
+        "PGPASSWORD": "MemoryPass123",
+        "PGDATABASE": "memory_db"
+      },
+      "description": "Persistent memory storage"
+    }
+  }
+}

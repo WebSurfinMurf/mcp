@@ -1,0 +1,63 @@
+# MCP SSE Services Configuration
+version: "1.0"
+
+services:
+  postgres:
+    port: 8001
+    container: mcp-postgres
+    networks:
+      - litellm-net
+      - postgres-net
+    description: "PostgreSQL database operations"
+    tools:
+      - list_databases
+      - execute_sql
+      - list_tables
+      - table_info
+      - query_stats
+
+  fetch:
+    port: 8002
+    container: mcp-fetch
+    networks:
+      - litellm-net
+    description: "HTTP/web content fetching"
+    tools:
+      - fetch
+
+  filesystem:
+    port: 8003
+    container: mcp-filesystem
+    networks:
+      - litellm-net
+    description: "File system operations"
+    volumes:
+      - "/home/administrator/workspace:/workspace:ro"
+      - "/home/administrator/mcp-shared:/shared:rw"
+    tools:
+      - read_file
+      - write_file
+      - list_directory
+      - create_directory
+
+  github:
+    port: 8004
+    container: mcp-github
+    networks:
+      - litellm-net
+    description: "GitHub API integration"
+    tools:
+      - search_repositories
+      - get_repository
+      - create_issue
+
+  monitoring:
+    port: 8005
+    container: mcp-monitoring
+    networks:
+      - litellm-net
+    description: "System monitoring and logs"
+    tools:
+      - get_container_logs
+      - search_logs
+      - get_system_metrics

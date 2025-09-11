@@ -1,0 +1,56 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/workspace:/workspace",
+        "-v", "/home/administrator/projects:/projects",
+        "mcp/filesystem",
+        "/workspace", "/projects"
+      ],
+      "description": "File system operations"
+    },
+    "monitoring": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/monitoring/src/index.js"],
+      "env": {
+        "LOKI_URL": "http://loki:3100",
+        "NETDATA_URL": "http://netdata:19999"
+      },
+      "description": "System monitoring and logs"
+    },
+    "fetch": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "mcp/fetch"
+      ],
+      "description": "Web content fetching"
+    },
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--network", "postgres-net",
+        "-e", "DATABASE_URI=postgresql://admin:Pass123qp@postgres:5432/postgres",
+        "crystaldba/postgres-mcp"
+      ],
+      "description": "PostgreSQL database operations"
+    },
+    "n8n": {
+      "command": "bash",
+      "args": ["/home/administrator/projects/mcp/n8n/mcp-wrapper.sh"],
+      "description": "n8n workflow automation"
+    },
+    "playwright": {
+      "command": "node",
+      "args": ["/home/administrator/projects/mcp/playwright/src/index.js"],
+      "env": {
+        "PLAYWRIGHT_URL": "http://localhost:3000",
+        "PLAYWRIGHT_WS_URL": "ws://localhost:3000"
+      },
+      "description": "Browser automation with Playwright"
+    }
+  }
+}
