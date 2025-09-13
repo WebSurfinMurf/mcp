@@ -1,248 +1,167 @@
 # MCP Infrastructure - Model Context Protocol Services
 
-*Last Updated: 2025-09-08*
-*Status: ✅ Fully Operational with Unified Registry*
+*Last Updated: 2025-09-13*
+*Status: 🔄 Clean State - Ready for New Implementation*
 
 ## Overview
-Centralized directory for all MCP (Model Context Protocol) services that provide Claude Code and other tools with programmatic capabilities. Now features a **Unified MCP Registry** that serves as a single source of truth for all MCP tools.
+Repository for MCP (Model Context Protocol) services that provide Claude Code and other AI tools with programmatic capabilities. Following a complete cleanup, the infrastructure is now ready for a fresh, simplified implementation.
 
-## Architecture
+## Current State
+The MCP infrastructure has been reset to a clean state:
+- ✅ Legacy centralized tool servers removed (dualdeploy, sse, litellm-bridge, proxy-sse)
+- ✅ All legacy documentation and configurations archived
+- ✅ Individual service directories preserved and ready for development
+- ✅ Docker containers and images cleaned up
+- ✅ Claude Code MCP configuration reset
 
-### SSE Proxy Gateway
-- **Container**: `mcp-proxy-sse`
-- **Port**: 8585
-- **Directory**: `/home/administrator/projects/mcp/proxy-sse/`
-- **Config**: `servers-production.json`
-- **Purpose**: Bridges stdio-based MCP servers to HTTP/SSE endpoints
-
-### Service Structure
+## Directory Structure
 ```
 /home/administrator/projects/mcp/
-├── unified-registry/   # ⭐ NEW: Single source of truth for all MCP tools
-├── proxy-sse/          # SSE gateway proxy
-├── filesystem/         # File operations
-├── fetch/             # Web content fetching
-├── postgres/          # PostgreSQL operations
-├── timescaledb/       # Time-series database
-├── monitoring/        # Logs and metrics
-├── n8n/              # Workflow automation
-├── playwright/        # Browser automation
-└── memory-postgres/   # Vector memory (currently broken)
+├── archive/                 # Legacy implementations and documentation
+│   ├── compose/            # SSE bridge infrastructure and deployment patterns
+│   ├── legacy-docs/        # Phase docs, status files, troubleshooting guides
+│   ├── old-compose/        # Previous docker-compose configurations
+│   ├── unified-registry/   # Original unified registry approach
+│   ├── unified-registry-v2/# Enhanced unified registry with Node.js shims
+│   └── secure-proxy-admin/ # Secure proxy configurations
+├── fetch/                  # Web content fetching service
+├── filesystem/             # File operations service
+├── memory-postgres/        # Vector memory service
+├── monitoring/             # System monitoring and log analysis
+├── n8n/                   # Workflow automation service
+├── playwright/             # Browser automation service
+├── postgres/               # PostgreSQL operations service
+├── timescaledb/            # Time-series database service
+├── CLAUDE.md              # This documentation
+└── README.md              # Basic project info
 ```
 
-## Unified MCP Registry (NEW) ⭐
+## Individual MCP Services
 
-### Overview
-- **Location**: `/home/administrator/projects/mcp/unified-registry/`
-- **Purpose**: Central registry for all MCP tool definitions
-- **Status**: ✅ Phase 2 Complete - 7 services, 24 tools
-- **Benefits**: 
-  - Single source of truth for Claude Code and LiteLLM
-  - Consistent `service_tool` naming convention
-  - No duplication of tool definitions
-  - Platform-agnostic adapters
+### Available Service Directories
+Each service directory contains the implementation for a specific MCP tool:
 
-### Integrated Services (24 tools)
-1. **filesystem** (4 tools) - File operations
-2. **postgres** (2 tools) - Database queries
-3. **github** (3 tools) - GitHub API
-4. **monitoring** (5 tools) - Logs & metrics
-5. **n8n** (3 tools) - Workflow automation
-6. **playwright** (4 tools) - Browser automation
-7. **timescaledb** (3 tools) - Time-series DB
+1. **fetch/** - HTTP/web content fetching with markdown conversion
+2. **filesystem/** - Secure file operations with path restrictions
+3. **postgres/** - PostgreSQL database operations and queries
+4. **memory-postgres/** - Vector memory storage (needs dependency fixes)
+5. **monitoring/** - System monitoring, log queries, and metrics
+6. **n8n/** - Workflow automation and integration
+7. **playwright/** - Browser automation and web scraping
+8. **timescaledb/** - Time-series database operations
+
+### Service Implementation Status
+- **Architecture**: Individual service approach (centralized approaches archived)
+- **Configuration**: Each service can be deployed independently
+- **Integration**: Services can be connected to Claude Code via MCP protocol
+- **Documentation**: Service-specific docs within each directory
+
+## Architecture Approach
+
+### Previous Approaches (Archived)
+1. **Unified Registry**: Single adapter serving all tools - archived due to complexity
+2. **SSE-Only Services**: Pure HTTP/SSE approach - archived as experimental
+3. **Dual-Mode Deployment**: stdio + SSE hybrid - archived due to maintenance overhead
+4. **Proxy Gateway**: Centralized SSE proxy - archived for simplicity
+
+### Current Approach: Individual Services
+- Each service directory contains a complete, standalone MCP implementation
+- Services can be deployed and configured independently
+- Direct integration with Claude Code via MCP protocol
+- Simpler debugging and maintenance
+
+## Getting Started
+
+### For New Implementation
+1. **Choose a Service**: Start with one of the existing service directories
+2. **Review Archive**: Check `archive/` for previous implementation patterns
+3. **Configure Environment**: Set up service-specific environment variables
+4. **Deploy Service**: Follow service-specific deployment instructions
+5. **Register with Claude**: Add to Claude Code MCP configuration
+
+### Service Development Pattern
+```bash
+# Example service structure
+/home/administrator/projects/mcp/{service}/
+├── mcp-wrapper.sh          # Service deployment script
+├── Dockerfile              # Container definition
+├── requirements.txt        # Dependencies
+├── service.py             # Main service implementation
+├── models.py              # Data models and schemas
+├── CLAUDE.md              # Service documentation
+└── README.md              # Quick start guide
+```
+
+## Configuration
+
+### Environment Variables
+- Service-specific secrets: `/home/administrator/secrets/mcp-{service}.env`
+- Follow security best practices (no hardcoded credentials)
+- Use environment variable references in all configurations
 
 ### Claude Code Integration
-```json
-// Add to ~/.config/claude/mcp_servers.json
-{
-  "unified-tools": {
-    "command": "/home/administrator/projects/mcp/unified-registry/run_claude_adapter.sh",
-    "args": []
-  }
-}
-```
+- Configuration file: `~/.config/claude/mcp-settings.json`
+- Add services individually as needed
+- Each service registers its own tools and capabilities
 
-## Naming Standards
+### Container Naming Convention
+- Container names: `mcp-{service}`
+- Network isolation where appropriate
+- Consistent logging and health check patterns
 
-### Directory Structure
-- Pattern: `/home/administrator/projects/mcp/{service}/`
-- Example: `/home/administrator/projects/mcp/postgres/`
+## Archived Components
 
-### Container Names
-- Pattern: `mcp-{service}`
-- Examples: `mcp-filesystem`, `mcp-postgres-stdio`, `mcp-proxy-sse`
+### Legacy Documentation
+- **Phase Documentation**: Implementation phases and status updates
+- **Planning Documents**: Various architectural approaches and plans
+- **Troubleshooting Guides**: Service-specific issue resolution
+- **Configuration Files**: Old docker-compose and deployment configs
 
-### Secret Files
-- Pattern: `/home/administrator/secrets/mcp-{service}.env`
-- Examples: `mcp-postgres.env`, `mcp-timescaledb.env`, `mcp-n8n.env`
+### Archived Implementations
+- **Unified Registry**: Centralized tool registry approach
+- **SSE Services**: Pure HTTP/SSE implementation
+- **Proxy Gateway**: Centralized SSE proxy system
+- **Admin Tools**: Legacy maintenance and migration scripts
 
-### Wrapper Scripts
-- Standard name: `mcp-wrapper.sh` in each service directory
-- Purpose: Handle container naming, environment loading, and stdio communication
+## Next Steps
 
-## Working Services (7/7)
+### Immediate Actions
+1. **Service Selection**: Choose which MCP services to implement first
+2. **Architecture Decision**: Confirm individual service approach vs. alternatives
+3. **Development Priority**: Determine service development order
+4. **Integration Strategy**: Plan Claude Code integration approach
 
-### 1. Filesystem
-- **Endpoint**: `http://localhost:8585/servers/filesystem/sse`
-- **Container**: `mcp-filesystem`
-- **Type**: Docker container
-- **Tools**: File read/write operations
+### Development Workflow
+1. Select a service directory (e.g., `postgres/`, `fetch/`)
+2. Review archived implementations for patterns and lessons learned
+3. Implement service following MCP protocol specifications
+4. Create deployment scripts and documentation
+5. Test integration with Claude Code
+6. Document service capabilities and usage
 
-### 2. Fetch
-- **Endpoint**: `http://localhost:8585/servers/fetch/sse`
-- **Container**: `mcp-fetch`
-- **Type**: Docker container
-- **Tools**: Web content fetching
+### Future Considerations
+- **Service Health Monitoring**: Implement health checks and status reporting
+- **Unified Logging**: Centralized logging for all services
+- **Performance Metrics**: Service usage and performance tracking
+- **Auto-Discovery**: Dynamic service registration and discovery
+- **Load Balancing**: Service scaling and load distribution
 
-### 3. PostgreSQL
-- **Endpoint**: `http://localhost:8585/servers/postgres/sse`
-- **Container**: `mcp-postgres-stdio`
-- **Type**: Docker container
-- **Database**: `postgresql://admin:Pass123qp@postgres:5432/postgres`
-- **Tools**: Database operations
+## Support Resources
 
-### 4. TimescaleDB
-- **Endpoint**: `http://localhost:8585/servers/timescaledb/sse`
-- **Container**: `mcp-timescaledb`
-- **Type**: Docker container
-- **Database**: Port 5433
-- **Tools**: Time-series operations
+### Documentation
+- **MCP Protocol**: Official Model Context Protocol specifications
+- **Archived Implementations**: Previous approaches in `archive/` directory
+- **Service Examples**: Working examples in individual service directories
 
-### 5. Monitoring
-- **Endpoint**: `http://localhost:8585/servers/monitoring/sse`
-- **Type**: Node.js process
-- **Tools**: Log queries, metrics
+### Development Tools
+- **Individual Service Development**: Each service is self-contained
+- **Docker Support**: Container-based deployment for isolation
+- **Environment Management**: Standardized secret management approach
 
-### 6. n8n
-- **Endpoint**: `http://localhost:8585/servers/n8n/sse`
-- **Type**: Node.js with bash wrapper
-- **Tools**: Workflow automation
-
-### 7. Playwright
-- **Endpoint**: `http://localhost:8585/servers/playwright/sse`
-- **Type**: Node.js process
-- **Tools**: Browser automation
-
-## Excluded Services
-
-### Memory-Postgres
-- **Status**: Broken
-- **Issue**: onnxruntime-node library dependency
-- **Solution**: Would require containerization
-
-## Testing Services
-
-### Quick Test All Services
-```bash
-for service in filesystem fetch postgres timescaledb monitoring n8n playwright; do
-  echo -n "$service: "
-  curl -s -H "Accept: text/event-stream" --max-time 2 \
-    "http://localhost:8585/servers/$service/sse" | \
-    head -1 | grep -q "event: endpoint" && echo "✓" || echo "✗"
-done
-```
-
-### Test Individual Service
-```bash
-curl -s -H "Accept: text/event-stream" \
-  "http://localhost:8585/servers/filesystem/sse"
-```
-
-## Management Commands
-
-### Restart Proxy
-```bash
-docker restart mcp-proxy-sse
-```
-
-### Check Container Status
-```bash
-docker ps --format "table {{.Names}}\t{{.Image}}" | grep "^mcp-"
-```
-
-### Clean Up Containers
-```bash
-/home/administrator/projects/mcp/cleanup-containers.sh
-```
-
-### View Proxy Logs
-```bash
-docker logs mcp-proxy-sse --tail 50
-```
-
-## Configuration Files
-
-### Main Proxy Configuration
-`/home/administrator/projects/mcp/proxy-sse/servers-production.json`
-- Defines all service endpoints
-- Specifies command and arguments for each service
-- Uses wrapper scripts for Docker services
-
-### Environment Files
-All secrets stored in `/home/administrator/secrets/`:
-- `mcp-postgres.env` - PostgreSQL credentials
-- `mcp-timescaledb.env` - TimescaleDB credentials
-- `mcp-n8n.env` - n8n API credentials
-- `mcp-proxy-sse.env` - Proxy configuration
-
-## Implementation Notes
-
-### Container Naming Strategy
-Each Docker-based service uses a wrapper script that:
-1. Stops any existing container with the same name
-2. Removes the stopped container
-3. Starts new container with standardized name
-
-This ensures only one instance runs and names are predictable.
-
-### Environment Variable Handling
-- PostgreSQL uses hardcoded DATABASE_URI due to Docker expansion limitations
-- Other services load credentials from standardized secret files
-- Wrapper scripts handle environment variable loading
-
-### Known Limitations
-1. PostgreSQL DATABASE_URI must be hardcoded (Docker env expansion issue)
-2. Memory service excluded due to library dependencies
-3. Services run on-demand and terminate after use
-
-## Recent Changes (2025-09-07)
-
-### Standardization Complete
-- ✅ All directories follow `mcp/{service}` structure
-- ✅ All containers use `mcp-{service}` naming
-- ✅ All secrets use `mcp-{service}.env` format
-- ✅ Proxy directory renamed to `proxy-sse`
-- ✅ Fixed TimescaleDB wrapper script naming
-- ✅ Removed duplicate secret files
-
-### Container Management
-- Implemented standard wrapper scripts
-- Fixed unnamed container spawning issue
-- Created cleanup script for maintenance
-
-## Troubleshooting
-
-### Service Not Responding
-1. Check proxy is running: `docker ps | grep mcp-proxy-sse`
-2. Test endpoint directly with curl
-3. Check wrapper script permissions
-4. Verify secret files exist
-
-### Container Name Conflicts
-- Wrapper scripts now handle cleanup automatically
-- Run cleanup script if needed: `./cleanup-containers.sh`
-
-### Authentication Issues
-- Verify credentials in `/home/administrator/secrets/mcp-{service}.env`
-- Check DATABASE_URI in PostgreSQL configuration
-- Ensure services can reach their backends
-
-## Future Improvements
-- [ ] Fix memory service (containerize or resolve dependencies)
-- [ ] Add service health monitoring
-- [ ] Implement automatic container cleanup cron
-- [ ] Add metrics collection for service usage
-- [ ] Create unified deployment script
+### Troubleshooting
+- **Clean State**: No running containers or processes to conflict with
+- **Fresh Configuration**: Claude Code MCP settings reset to empty
+- **Archived Solutions**: Previous troubleshooting guides available in archive
 
 ---
-*Infrastructure follows Validate-First Philosophy: Each component tested and validated before integration*
+*Clean slate implementation ready - choose your architecture and begin development*
