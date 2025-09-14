@@ -143,8 +143,8 @@ class MCPBridge:
                     input_schema["properties"]["database"] = {"type": "string", "description": "Database name (optional)"}
 
             elif tool["name"].startswith("minio_"):
-                input_schema["properties"]["bucket"] = {"type": "string", "description": "S3 bucket name"}
-                input_schema["required"].append("bucket")
+                input_schema["properties"]["bucket_name"] = {"type": "string", "description": "S3 bucket name"}
+                input_schema["required"].append("bucket_name")
                 if "list_objects" in tool["name"]:
                     input_schema["properties"]["prefix"] = {"type": "string", "description": "Object prefix filter (optional)"}
                 elif "get_object" in tool["name"]:
