@@ -31,13 +31,21 @@ User → Traefik → OAuth2 Proxy → LangChain Server → Backend Services
 ### Phase 1: Project Structure Setup
 
 #### 1.1 Create Directory Structure
+Follow the standard directory pattern:
 ```bash
-mkdir -p /home/administrator/projects/mcp/langchain/app
-cd /home/administrator/projects/mcp/langchain
+# Standard project structure
+mkdir -p /home/administrator/projects/mcp/server/app
+mkdir -p /home/administrator/projects/data/mcp-server
+touch /home/administrator/projects/secrets/mcp-server.env
+touch /home/administrator/projects/mcp/server/CLAUDE.md
+
+# Navigate to project directory
+cd /home/administrator/projects/mcp/server
 ```
 
 #### 1.2 Environment Configuration
-Create `.env` file:
+Create the main environment file following standard location:
+`/home/administrator/projects/secrets/mcp-server.env`:
 ```env
 # Domain Configuration
 DOMAIN=ai-servicers.com
@@ -352,9 +360,76 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
-### Phase 3: Container Configuration
+### Phase 3: Deployment Script & Container Configuration
 
-#### 3.1 Docker Compose Configuration
+#### 3.1 Standard Deployment Script
+Create `deploy.sh` following the standard template:
+```bash
+#!/bin/bash
+set -e
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${GREEN}=== MCP Server Deployment ===${NC}"
+
+PROJECT_NAME="mcp-server"
+PROJECT_DIR="/home/administrator/projects/mcp/server"
+DATA_DIR="/home/administrator/projects/data/$PROJECT_NAME"
+SECRETS_FILE="/home/administrator/projects/secrets/$PROJECT_NAME.env"
+
+# Validate prerequisites
+if [ ! -f "$SECRETS_FILE" ]; then
+    echo -e "${RED}Error: Secrets file not found at $SECRETS_FILE${NC}"
+    exit 1
+fi
+
+# Load secrets
+echo -e "${YELLOW}Loading configuration...${NC}"
+source "$SECRETS_FILE"
+
+# Create data directory
+mkdir -p "$DATA_DIR"
+
+# Stop existing containers
+echo -e "${YELLOW}Stopping existing containers...${NC}"
+docker-compose down 2>/dev/null || true
+
+# Deploy new containers
+echo -e "${YELLOW}Deploying containers...${NC}"
+docker-compose up -d
+
+# Wait for services to start
+echo -e "${YELLOW}Waiting for services to start...${NC}"
+sleep 10
+
+# Health checks
+echo -e "${YELLOW}Checking service health...${NC}"
+if docker ps | grep -q "$PROJECT_NAME"; then
+    echo -e "${GREEN}✓ Containers are running${NC}"
+else
+    echo -e "${RED}✗ Deployment failed${NC}"
+    exit 1
+fi
+
+# Test endpoints
+if curl -f -s http://localhost:8000/health > /dev/null; then
+    echo -e "${GREEN}✓ Health check passed${NC}"
+else
+    echo -e "${YELLOW}⚠ Health check failed (may need time to start)${NC}"
+fi
+
+echo -e "${GREEN}=== Deployment Complete ===${NC}"
+echo -e "External URL: https://mcp.ai-servicers.com"
+echo -e "Health Check: https://mcp.ai-servicers.com/health"
+echo -e "API Docs: https://mcp.ai-servicers.com/docs"
+echo -e "View logs: docker-compose logs -f"
+```
+
+#### 3.2 Docker Compose Configuration
 Create `docker-compose.yml`:
 ```yaml
 version: '3.8'
@@ -371,7 +446,7 @@ services:
       sh -c "pip install --no-cache-dir -r requirements.txt &&
              uvicorn main:app --host 0.0.0.0 --port 8000"
     env_file:
-      - .env
+      - /home/administrator/secrets/mcp-server.env
       - /home/administrator/secrets/postgres.env
       - /home/administrator/secrets/minio.env
     networks:
@@ -472,8 +547,38 @@ OAUTH2_PROXY_COOKIE_SECRET=your-generated-cookie-secret
 
 ### Phase 5: Deployment & Testing
 
-#### 5.1 Pre-Deployment Checks
+#### 5.1 Pre-Deployment Validation
+Follow the standard validation checklist:
+
 ```bash
+# Validate prerequisites
+PROJECT_NAME="mcp-server"
+SECRETS_FILE="/home/administrator/projects/secrets/$PROJECT_NAME.env"
+DATA_DIR="/home/administrator/projects/data/$PROJECT_NAME"
+
+# Check secrets file exists and is populated
+if [ ! -f "$SECRETS_FILE" ]; then
+    echo "❌ Secrets file missing: $SECRETS_FILE"
+    exit 1
+else
+    echo "✅ Secrets file found"
+fi
+
+# Check data directory exists with proper permissions
+mkdir -p "$DATA_DIR"
+echo "✅ Data directory created: $DATA_DIR"
+
+# Test deployment script syntax
+bash -n /home/administrator/projects/mcp/server/deploy.sh
+echo "✅ Deploy script syntax valid"
+
+# Check port conflicts
+if netstat -tlnp | grep :8000; then
+    echo "⚠️  Port 8000 already in use"
+else
+    echo "✅ Port 8000 available"
+fi
+
 # Verify networks exist
 docker network ls | grep -E "(litellm-net|postgres-net|traefik-proxy|keycloak-net)"
 
@@ -484,14 +589,16 @@ docker run --rm --network litellm-net curlimages/curl curl -f http://litellm:400
 
 #### 5.2 Deployment
 ```bash
-cd /home/administrator/projects/mcp/langchain
+# Navigate to project directory
+cd /home/administrator/projects/mcp/server
 
-# Start services
-docker-compose up -d
+# Execute standard deployment script
+./deploy.sh
 
-# Check status
-docker-compose ps
-docker-compose logs -f
+# Alternative manual deployment:
+# docker-compose up -d
+# docker-compose ps
+# docker-compose logs -f
 ```
 
 #### 5.3 Verification Steps
@@ -530,12 +637,136 @@ curl -X POST https://mcp.ai-servicers.com/agent/invoke \
 # https://mcp.ai-servicers.com/docs - Interactive API documentation
 ```
 
-### Phase 6: Integration & Monitoring
+### Phase 6: Documentation & Monitoring
 
-#### 6.1 Logging Integration
-- Logs automatically collected by Promtail (no additional configuration needed)
-- Structured JSON format for easy querying in Grafana/Loki
-- Query examples: `{compose_service="mcp-server"}`, `{container="mcp-server"}`
+#### 6.1 CLAUDE.md Documentation
+Create comprehensive documentation following the standard template:
+```bash
+cat > /home/administrator/projects/mcp/server/CLAUDE.md << 'EOF'
+# MCP Server - Centralized LangChain Tool Server
+
+## Executive Summary
+Centralized MCP (Model Context Protocol) server that provides unified tool access via LangChain agents. Replaces distributed MCP approach with a single Python-based service offering both agent endpoints and direct tool access.
+
+## Current Status
+- **Status**: ✅ Operational / ⚠️ Issues / 🚧 In Progress
+- **External URL**: https://mcp.ai-servicers.com
+- **Internal URL**: http://mcp-server:8000
+- **Container**: mcp-server, mcp-server-auth-proxy
+- **Networks**: traefik-proxy, postgres-net, litellm-net, keycloak-net
+
+## Architecture
+- **Technology Stack**: Python + LangChain + LangServe + FastAPI
+- **Authentication**: OAuth2 Proxy + Keycloak SSO
+- **Backend Integration**: PostgreSQL, MinIO S3, LiteLLM
+- **Model**: Claude-3.5-Sonnet (configurable via AGENT_MODEL)
+
+## File Locations
+- **Project**: `/home/administrator/projects/mcp/server/`
+- **Data**: `/home/administrator/projects/data/mcp-server/`
+- **Secrets**: `/home/administrator/projects/secrets/mcp-server.env`
+- **Application**: `/home/administrator/projects/mcp/server/app/`
+- **Deploy Script**: `/home/administrator/projects/mcp/server/deploy.sh`
+
+## Access Methods
+- **API Documentation**: https://mcp.ai-servicers.com/docs (Keycloak SSO required)
+- **Health Check**: https://mcp.ai-servicers.com/health
+- **Tools List**: https://mcp.ai-servicers.com/tools
+- **Agent Endpoint**: https://mcp.ai-servicers.com/agent/invoke
+- **Direct Tools**: https://mcp.ai-servicers.com/tools/{tool_name}
+
+## Common Operations
+
+### Deploy/Update
+```bash
+cd /home/administrator/projects/mcp/server && ./deploy.sh
+```
+
+### View Logs
+```bash
+docker-compose logs -f
+docker logs mcp-server --tail 50 -f
+docker logs mcp-server-auth-proxy --tail 50 -f
+```
+
+### Restart Services
+```bash
+docker-compose restart
+```
+
+### Test Tools
+```bash
+# Get Keycloak token first, then:
+TOKEN="your-jwt-token"
+curl -X POST https://mcp.ai-servicers.com/tools/postgres_query \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"query": "SELECT version();"}}'
+```
+
+## Available Tools
+1. **postgres_query**: Execute read-only PostgreSQL queries
+2. **minio_list_objects**: List objects in MinIO S3 buckets
+3. **minio_get_object**: Get text file content from MinIO S3
+
+## Troubleshooting
+
+### Container Not Starting
+- Check secrets file: `cat /home/administrator/projects/secrets/mcp-server.env`
+- Check networks: `docker network ls | grep -E "(postgres-net|litellm-net|traefik-proxy)"`
+- Check logs: `docker-compose logs`
+
+### Authentication Issues
+- Verify Keycloak client configuration
+- Check OAuth2 proxy logs: `docker logs mcp-server-auth-proxy`
+- Confirm realm is 'main' not 'master'
+
+### Tool Execution Failures
+- Check PostgreSQL connectivity: `docker exec mcp-server pg_isready -h postgres`
+- Check MinIO connectivity: `docker exec mcp-server curl http://minio:9000/health`
+- Check LiteLLM connectivity: `docker exec mcp-server curl http://litellm:4000/health`
+
+## Integration Points
+- **LiteLLM**: Agent model routing via http://litellm:4000
+- **PostgreSQL**: Database queries via postgres:5432
+- **MinIO**: Object storage via http://minio:9000
+- **Keycloak**: Authentication via OAuth2 proxy
+- **Promtail**: Automatic log collection (JSON structured)
+
+## Last Updated
+[DATE] - Initial deployment and configuration
+EOF
+```
+
+### Phase 7: Monitoring & Observability
+
+#### 7.1 Promtail Integration
+Add containers to Promtail for log collection:
+
+```bash
+# Edit Promtail configuration
+nano /home/administrator/projects/promtail/promtail-extended.yml
+
+# Add to extended_services list (around line 377-394):
+- name: name
+  values:
+    - mcp-server
+    - mcp-server-auth-proxy
+
+# Restart Promtail to pick up changes
+cd /home/administrator/projects/promtail && ./deploy.sh
+
+# Verify log collection
+docker logs promtail | grep "added Docker target.*mcp-server"
+```
+
+#### 7.2 Grafana/Loki Queries
+- Structured JSON format for easy querying
+- Query examples:
+  - `{container="mcp-server"}` - All MCP server logs
+  - `{container="mcp-server-auth-proxy"}` - OAuth2 proxy logs
+  - `{container="mcp-server"} |= "ERROR"` - Error logs only
+  - `{container="mcp-server"} | json | level="INFO"` - Info level logs
 
 #### 6.2 Monitoring Setup
 - Health checks configured for container monitoring
@@ -548,6 +779,47 @@ Update the following files:
 - `AINotes/SYSTEM-OVERVIEW.md`: Add MCP server to services list
 - `AINotes/security.md`: Document new OAuth2 client configuration
 
+## Standards Compliance Checklist
+
+### Directory Structure ✅
+- [x] Base: `/home/administrator/projects/mcp/server/`
+- [x] Data: `/home/administrator/projects/data/mcp-server/`
+- [x] Secrets: `/home/administrator/projects/secrets/mcp-server.env`
+- [x] Docs: `/home/administrator/projects/mcp/server/CLAUDE.md`
+
+### Naming Conventions ✅
+- [x] External DNS: `mcp.ai-servicers.com` (follows `<PROJECTNAME>.ai-servicers.com`)
+- [x] Container name: `mcp-server` (main), `mcp-server-auth-proxy` (companion)
+- [x] Deploy script: `deploy.sh`
+- [x] Secrets file: `/secrets/mcp-server.env`
+
+### Deployment Script ✅
+- [x] Colors for output (GREEN, YELLOW, RED, NC)
+- [x] Error handling with `set -e`
+- [x] Secrets file validation
+- [x] Health checks
+- [x] Status reporting
+
+### Authentication Setup ✅
+- [x] Keycloak client: `mcp-server`
+- [x] OAuth2 proxy configuration
+- [x] Groups: `administrators` for full access
+
+### CLAUDE.md Documentation ✅
+- [x] Executive Summary
+- [x] Current Status
+- [x] Architecture
+- [x] File Locations
+- [x] Access Methods
+- [x] Common Operations
+- [x] Troubleshooting
+- [x] Integration Points
+
+### Logging Integration ✅
+- [x] Structured JSON logging to stdout
+- [x] Promtail integration instructions
+- [x] Grafana/Loki query examples
+
 ## Success Criteria
 
 - [ ] Service accessible at https://mcp.ai-servicers.com
@@ -558,6 +830,7 @@ Update the following files:
 - [ ] Structured logs appearing in Loki
 - [ ] Health checks passing
 - [ ] API documentation accessible
+- [ ] Standards compliance validated
 
 ## Rollback Plan
 
@@ -566,7 +839,7 @@ If deployment fails:
 2. Remove containers: `docker rm mcp-server mcp-server-auth-proxy`
 3. Remove from Traefik: Containers auto-removed from routing
 4. Remove Keycloak client (optional)
-5. Clean up files: `rm -rf /home/administrator/projects/mcp/langchain`
+5. Clean up files: `rm -rf /home/administrator/projects/mcp/server`
 
 ## Post-Deployment Tasks
 
