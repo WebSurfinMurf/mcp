@@ -1,18 +1,19 @@
 # MCP Infrastructure - Model Context Protocol Services
 
-*Last Updated: 2025-09-13*
-*Status: 🔄 Clean State - Ready for New Implementation*
+*Last Updated: 2025-09-14*
+*Status: ✅ Centralized MCP Server Operational*
 
 ## Overview
-Repository for MCP (Model Context Protocol) services that provide Claude Code and other AI tools with programmatic capabilities. Following a complete cleanup, the infrastructure is now ready for a fresh, simplified implementation.
+Repository for MCP (Model Context Protocol) services that provide Claude Code and other AI tools with programmatic capabilities. Successfully implemented a centralized MCP server with dual access patterns for both internal development tools and external authenticated access.
 
 ## Current State
-The MCP infrastructure has been reset to a clean state:
-- ✅ Legacy centralized tool servers removed (dualdeploy, sse, litellm-bridge, proxy-sse)
-- ✅ All legacy documentation and configurations archived
-- ✅ Individual service directories preserved and ready for development
-- ✅ Docker containers and images cleaned up
-- ✅ Claude Code MCP configuration reset
+The MCP infrastructure has been successfully centralized:
+- ✅ Centralized MCP server deployed at `/home/administrator/projects/mcp/server/`
+- ✅ 10 tools integrated from 4 validated MCP service implementations
+- ✅ Dual access patterns: Internal direct (`mcp.linuxserver.lan`) + External OAuth2 (`mcp.ai-servicers.com`)
+- ✅ Docker Compose deployment with OAuth2 proxy and Traefik integration
+- ✅ Individual service directories preserved for reference and future expansion
+- ⏳ Keycloak client configuration needed for external access authentication
 
 ## Directory Structure
 ```
@@ -38,23 +39,26 @@ The MCP infrastructure has been reset to a clean state:
 
 ## Individual MCP Services
 
-### Available Service Directories
-Each service directory contains the implementation for a specific MCP tool:
+### Integrated Tools Status
+**✅ Implemented in Centralized Server**:
+1. **PostgreSQL Tools (3)** - Database queries, list databases/tables
+2. **MinIO S3 Tools (2)** - Object listing and content retrieval
+3. **Monitoring Tools (2)** - Loki log search + Netdata system metrics
+4. **Web Fetch Tools (1)** - HTTP/web content fetching with markdown conversion
+5. **Filesystem Tools (2)** - Secure file operations with path restrictions
 
-1. **fetch/** - HTTP/web content fetching with markdown conversion
-2. **filesystem/** - Secure file operations with path restrictions
-3. **postgres/** - PostgreSQL database operations and queries
-4. **memory-postgres/** - Vector memory storage (needs dependency fixes)
-5. **monitoring/** - System monitoring, log queries, and metrics
-6. **n8n/** - Workflow automation and integration
-7. **playwright/** - Browser automation and web scraping
-8. **timescaledb/** - Time-series database operations
+**📁 Available for Future Integration**:
+- **memory-postgres/** - Vector memory storage
+- **n8n/** - Workflow automation and integration
+- **playwright/** - Browser automation and web scraping
+- **timescaledb/** - Time-series database operations (custom implementation)
 
-### Service Implementation Status
-- **Architecture**: Individual service approach (centralized approaches archived)
-- **Configuration**: Each service can be deployed independently
-- **Integration**: Services can be connected to Claude Code via MCP protocol
-- **Documentation**: Service-specific docs within each directory
+### Implementation Status
+- **Architecture**: Centralized LangChain server with integrated tools
+- **Deployment**: Single Docker Compose stack with OAuth2 proxy
+- **Access**: Dual patterns (internal direct + external authenticated)
+- **Integration**: Ready for Claude Code via HTTP API or direct tool calls
+- **Documentation**: Complete operational docs in `/home/administrator/projects/mcp/server/`
 
 ## Architecture Approach
 
@@ -72,12 +76,12 @@ Each service directory contains the implementation for a specific MCP tool:
 
 ## Getting Started
 
-### For New Implementation
-1. **Choose a Service**: Start with one of the existing service directories
-2. **Review Archive**: Check `archive/` for previous implementation patterns
-3. **Configure Environment**: Set up service-specific environment variables
-4. **Deploy Service**: Follow service-specific deployment instructions
-5. **Register with Claude**: Add to Claude Code MCP configuration
+### Using the Centralized MCP Server
+1. **Internal Access**: Use `http://mcp.linuxserver.lan` for development tools
+2. **External Access**: Configure Keycloak client for `https://mcp.ai-servicers.com`
+3. **API Integration**: Use REST endpoints at `/tools/{tool_name}` for direct access
+4. **Agent Mode**: Use `/agent/invoke` for LangChain agent interactions
+5. **Documentation**: Browse API docs at `/docs` endpoint
 
 ### Service Development Pattern
 ```bash
@@ -126,10 +130,10 @@ Each service directory contains the implementation for a specific MCP tool:
 ## Next Steps
 
 ### Immediate Actions
-1. **Service Selection**: Choose which MCP services to implement first
-2. **Architecture Decision**: Confirm individual service approach vs. alternatives
-3. **Development Priority**: Determine service development order
-4. **Integration Strategy**: Plan Claude Code integration approach
+1. **Keycloak Setup**: Configure client `mcp-server` in realm `main` for external access
+2. **Tool Testing**: Verify all 10 integrated tools function correctly
+3. **Claude Code Integration**: Configure MCP settings to use internal access endpoint
+4. **Performance Testing**: Validate concurrent request handling and response times
 
 ### Development Workflow
 1. Select a service directory (e.g., `postgres/`, `fetch/`)
@@ -164,4 +168,4 @@ Each service directory contains the implementation for a specific MCP tool:
 - **Archived Solutions**: Previous troubleshooting guides available in archive
 
 ---
-*Clean slate implementation ready - choose your architecture and begin development*
+*Centralized MCP server operational - internal access working, external access pending Keycloak configuration*
