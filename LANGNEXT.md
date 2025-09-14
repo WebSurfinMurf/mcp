@@ -12,7 +12,9 @@ This plan outlines the integration of three major services into our centralized 
 - **Playwright**: Browser automation and web scraping (15+ tools)
 - **TimescaleDB**: Advanced time-series database operations (12+ tools)
 
-**Expected Outcome**: Transform our MCP server into a comprehensive AI toolset with 40+ tools covering database operations, web automation, workflow orchestration, monitoring, file operations, and time-series analytics.
+**Expected Outcome**: Transform our MCP infrastructure into a comprehensive AI toolset with 40+ tools covering database operations, web automation, workflow orchestration, monitoring, file operations, and time-series analytics.
+
+**🔄 STRATEGIC APPROACH REVISED** (Based on Expert Feedback): **Integrate, Don't Re-implement** - Use best-in-class MCP implementations as dedicated microservices rather than re-implementing in Python. This dramatically reduces implementation risk and complexity while maintaining enterprise-grade functionality.
 
 ## 📊 Current State Analysis
 
@@ -111,38 +113,72 @@ git clone https://github.com/microsoft/playwright-mcp.git playwright-official
 # (May need to use existing implementation)
 ```
 
-#### **Tool Extraction Process**
-For each service, extract the best tools to integrate into our centralized server:
+#### **🔧 Tool Integration Process** (REVISED APPROACH)
+**Strategic Decision**: Treat best-in-class MCPs as **dedicated microservices** rather than re-implementing them in Python.
 
-**🔧 Tool Integration Methodology**:
-1. **Analyze Tool Functions**: Extract function signatures and logic
-2. **Convert to LangChain Tools**: Use `@tool` decorator pattern
-3. **Integrate Configuration**: Add to centralized config system
-4. **Test Integration**: Verify functionality via HTTP API
-5. **Update MCP Bridge**: Add tool schemas for Claude Code integration
+**Microservice Architecture Methodology**:
+1. **Deploy as Separate Containers**: Run `czlonkowski/n8n-mcp` and `microsoft/playwright-mcp` as standalone Docker containers
+2. **Create Python Wrapper Tools**: Build thin LangChain `@tool` wrappers that orchestrate calls to the dedicated MCP containers
+3. **Container Communication**: Use HTTP/subprocess calls from central server to specialized MCP containers
+4. **Configuration Orchestration**: Central server manages secrets and routing to appropriate MCP services
+5. **Update MCP Bridge**: Add unified tool schemas for Claude Code integration
+
+**Benefits of This Approach**:
+- ✅ **Reduced Implementation Time**: From weeks to days
+- ✅ **Maintained Updates**: Easy to pull bug fixes and features from original projects
+- ✅ **Proven Reliability**: Use battle-tested implementations as intended
+- ✅ **Simplified Debugging**: Issues isolated to specific service containers
+- ✅ **Reduced Central Server Complexity**: Orchestrator pattern vs. monolithic re-implementation
 
 ### **Phase 2: Centralized Server Enhancement**
 
-#### **Enhanced Architecture**
-```python
-# /home/administrator/projects/mcp/server/app/main.py (enhanced)
+#### **🏗️ Revised Microservice Architecture**
+```yaml
+# Docker Compose Architecture (Enhanced)
+version: '3.8'
+services:
+  # Central orchestrator (existing)
+  mcp-server:
+    # Contains 12 existing tools + thin wrapper tools for orchestration
 
-# Tool Categories (Expanded):
+  # Dedicated MCP microservices (new)
+  mcp-n8n:
+    image: czlonkowski/n8n-mcp:latest
+    container_name: mcp-n8n
+    networks: [traefik-proxy, n8n-net]
+    # Exposes n8n MCP tools via HTTP/stdio
+
+  mcp-playwright:
+    image: microsoft/playwright-mcp:latest
+    container_name: mcp-playwright
+    networks: [traefik-proxy]
+    # Exposes Playwright tools via MCP protocol
+
+  # Enhanced TimescaleDB integration (existing, enhanced)
+  # Use existing mcp-timescaledb implementation
+```
+
+```python
+# /home/administrator/projects/mcp/server/app/main.py (orchestrator pattern)
+
+# Tool Categories (Orchestrator + Direct):
 tools = [
-    # Existing tools (12)
+    # Direct tools (existing - 12)
     *postgres_tools,      # 5 tools
     *minio_tools,         # 2 tools
     *monitoring_tools,    # 2 tools
     *web_tools,          # 1 tool
     *filesystem_tools,   # 2 tools
 
-    # New integrations (28+ tools)
-    *n8n_tools,          # 8+ tools
-    *playwright_tools,   # 15+ tools
-    *timescaledb_tools,  # 12+ tools
+    # Enhanced direct tools (12)
+    *timescaledb_tools,  # 12 enhanced tools (port from existing implementation)
+
+    # Orchestrator wrapper tools (16+)
+    *n8n_orchestrator_tools,        # 8+ thin wrappers → mcp-n8n container
+    *playwright_orchestrator_tools, # 15+ thin wrappers → mcp-playwright container
 ]
 
-# Total: 40+ tools across 6 service categories
+# Total: 40+ tools (24 direct + 16+ orchestrated)
 ```
 
 #### **Configuration Management**
@@ -167,104 +203,173 @@ TIMESCALEDB_URL=postgresql://tsdbadmin:TimescaleSecure2025@timescaledb:5432/time
 
 ### **Phase 3: Tool Implementation Plan**
 
-#### **n8n Tools (8+ Tools Expected)**
-Based on research, implement these essential tools:
+#### **n8n Orchestrator Tools (8+ Tools Expected)**
+**Approach**: Thin Python wrappers that call the dedicated `mcp-n8n` container:
+
 ```python
+# Orchestrator wrapper pattern - calls to dedicated mcp-n8n container
+import subprocess
+import json
+
 @tool
 def n8n_list_workflows(active_only: bool = None, tags: List[str] = None) -> str:
     """List workflows with optional filtering by status and tags"""
+    # Validate against security policies
+    if not _validate_n8n_operation("list"):
+        return "Error: Operation not allowed by security policy"
 
-@tool
-def n8n_get_workflow(workflow_id: str) -> str:
-    """Get detailed information about a specific workflow"""
+    # Call dedicated mcp-n8n container via MCP protocol
+    request = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "list_workflows",
+            "arguments": {"active_only": active_only, "tags": tags}
+        },
+        "id": 1
+    }
+
+    result = _call_mcp_container("mcp-n8n", request)
+    return result.get("result", {}).get("content", "No response")
 
 @tool
 def n8n_execute_workflow(workflow_id: str, data: dict = None) -> str:
     """Execute a workflow with optional input data"""
+    # Security validation
+    if not _validate_n8n_operation("execute"):
+        return "Error: Operation not allowed by security policy"
 
-@tool
-def n8n_get_executions(workflow_id: str = None, limit: int = 10) -> str:
-    """Get workflow execution history with filtering"""
+    if workflow_id in CONFIG["n8n"]["restricted_workflows"]:
+        return "Error: Workflow execution restricted by security policy"
 
-@tool
-def n8n_activate_workflow(workflow_id: str) -> str:
-    """Activate a workflow"""
+    # Orchestrate call to mcp-n8n container
+    request = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "execute_workflow",
+            "arguments": {"workflow_id": workflow_id, "data": data}
+        },
+        "id": 1
+    }
 
-@tool
-def n8n_deactivate_workflow(workflow_id: str) -> str:
-    """Deactivate a workflow"""
+    result = _call_mcp_container("mcp-n8n", request)
+    return result.get("result", {}).get("content", "Execution failed")
 
-@tool
-def n8n_create_webhook_test(workflow_id: str) -> str:
-    """Generate webhook test payloads for workflow testing"""
+# Helper functions for orchestration
+def _call_mcp_container(container_name: str, mcp_request: dict) -> dict:
+    """Call MCP container via subprocess/HTTP"""
+    try:
+        # Option 1: Direct subprocess call to container
+        cmd = f"docker exec {container_name} node mcp-server.js"
+        process = subprocess.Popen(
+            cmd, shell=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
 
-@tool
-def n8n_get_workflow_status(workflow_id: str) -> str:
-    """Get current status and statistics for a workflow"""
+        stdout, stderr = process.communicate(json.dumps(mcp_request))
+        return json.loads(stdout) if stdout else {"error": stderr}
+
+    except Exception as e:
+        logger.error(f"MCP container call failed: {e}")
+        return {"error": str(e)}
+
+def _validate_n8n_operation(operation: str) -> bool:
+    """Validate operation against security policies"""
+    return operation in CONFIG["security"]["n8n"]["allowed_operations"]
 ```
 
-#### **Playwright Tools (15+ Tools Expected)**
-Based on Microsoft's official MCP and research:
+#### **Playwright Orchestrator Tools (15+ Tools Expected)**
+**Approach**: Orchestrator wrappers calling Microsoft's official `mcp-playwright` container:
+
 ```python
+# Playwright orchestrator pattern with security validation
+from urllib.parse import urlparse
+
 @tool
 def playwright_navigate(url: str, wait_for_load: bool = True) -> str:
     """Navigate to a URL and wait for page load"""
+    # Security validation - check allowed domains
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc.lower()
+
+    allowed_domains = CONFIG["security"]["playwright"]["allowed_domains"]
+    blocked_domains = CONFIG["security"]["playwright"]["blocked_domains"]
+
+    if not _is_domain_allowed(domain, allowed_domains, blocked_domains):
+        return f"Error: Domain {domain} not allowed by security policy"
+
+    # Orchestrate call to mcp-playwright container
+    request = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "navigate",
+            "arguments": {"url": url, "wait_for_load": wait_for_load}
+        },
+        "id": 1
+    }
+
+    result = _call_mcp_container("mcp-playwright", request)
+    return result.get("result", {}).get("content", "Navigation failed")
 
 @tool
-def playwright_click_element(selector: str, timeout: int = 30000) -> str:
-    """Click on an element using CSS selector"""
-
-@tool
-def playwright_fill_form(selector: str, value: str) -> str:
-    """Fill form field with specified value"""
-
-@tool
-def playwright_take_screenshot(full_page: bool = False) -> str:
+def playwright_take_screenshot(full_page: bool = False, save_path: str = None) -> str:
     """Take screenshot of current page or full page"""
+    # Security: Ensure headless mode in production
+    if not CONFIG["security"]["playwright"]["headless_only"]:
+        return "Error: GUI browsers not allowed in production"
 
-@tool
-def playwright_get_page_content() -> str:
-    """Get current page content as text or HTML"""
+    # Orchestrate screenshot via mcp-playwright
+    request = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "screenshot",
+            "arguments": {"full_page": full_page, "save_path": save_path}
+        },
+        "id": 1
+    }
 
-@tool
-def playwright_wait_for_element(selector: str, timeout: int = 30000) -> str:
-    """Wait for element to appear on page"""
-
-@tool
-def playwright_extract_links(filter_pattern: str = None) -> str:
-    """Extract all links from current page with optional filtering"""
-
-@tool
-def playwright_execute_javascript(script: str) -> str:
-    """Execute JavaScript code in browser context"""
-
-@tool
-def playwright_get_element_text(selector: str) -> str:
-    """Get text content of specified element"""
-
-@tool
-def playwright_scroll_page(direction: str = "down", pixels: int = None) -> str:
-    """Scroll page in specified direction"""
-
-@tool
-def playwright_handle_dialog(action: str = "accept", text: str = None) -> str:
-    """Handle browser dialogs (accept, dismiss, or input text)"""
-
-@tool
-def playwright_upload_file(selector: str, file_path: str) -> str:
-    """Upload file to file input element"""
+    result = _call_mcp_container("mcp-playwright", request)
+    return result.get("result", {}).get("content", "Screenshot failed")
 
 @tool
 def playwright_get_accessibility_tree() -> str:
-    """Get structured accessibility representation of page"""
+    """Get structured accessibility representation of page (Microsoft's key innovation)"""
+    # This is the core feature of Microsoft's MCP - structured page representation
+    request = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "get_accessibility_tree",
+            "arguments": {}
+        },
+        "id": 1
+    }
 
-@tool
-def playwright_generate_test_code(actions: List[str]) -> str:
-    """Generate Playwright test code from recorded actions"""
+    result = _call_mcp_container("mcp-playwright", request)
+    return result.get("result", {}).get("content", "Accessibility tree unavailable")
 
-@tool
-def playwright_browser_context_new() -> str:
-    """Create new browser context for isolated browsing"""
+# Security helper for domain validation
+def _is_domain_allowed(domain: str, allowed_patterns: List[str], blocked_patterns: List[str]) -> bool:
+    """Check if domain is allowed by security policy"""
+    import fnmatch
+
+    # Check blocked patterns first
+    for pattern in blocked_patterns:
+        if fnmatch.fnmatch(domain, pattern):
+            return False
+
+    # Check allowed patterns
+    for pattern in allowed_patterns:
+        if fnmatch.fnmatch(domain, pattern):
+            return True
+
+    return False  # Default deny
 ```
 
 #### **TimescaleDB Tools (12+ Tools Expected)**
@@ -371,55 +476,66 @@ Update `/home/administrator/projects/mcp/server/CLAUDE.md`:
 **Web Fetch**: HTTP content retrieval with markdown conversion
 ```
 
-## 🚦 Implementation Phases & Timeline
+## 🚦 Implementation Phases & Timeline (REVISED)
 
-### **Phase 1: Evaluation & Setup** (Days 1-3)
+**📝 Strategic Decision Applied**: Microservice orchestration approach reduces implementation time by ~50%
+
+### **Phase 1: Container Setup & Evaluation** (Days 1-2)
 - ✅ Research completed (2025-09-14)
-- Download and evaluate best implementations
-- Set up evaluation workspace
-- Test individual service implementations
+- Deploy best-in-class MCP containers as dedicated services
+  - `czlonkowski/n8n-mcp` as `mcp-n8n` container
+  - `microsoft/playwright-mcp` as `mcp-playwright` container
+- Set up container-to-container communication
+- Test MCP protocol communication with each service
 
-### **Phase 2: Tool Integration** (Days 4-7)
-- Extract tools from best implementations
-- Convert to centralized LangChain format
-- Integrate configuration management
-- Update environment files
+### **Phase 2: Orchestrator Integration** (Days 3-4)
+- Implement thin Python wrapper tools using orchestrator pattern
+- Integrate security policy validation in each wrapper
+- Add container communication helpers (`_call_mcp_container`)
+- Update centralized configuration for microservice endpoints
 
-### **Phase 3: Testing & Debugging** (Days 8-10)
-- HTTP API testing for all tools
+### **Phase 3: Testing & Security Validation** (Days 5-6)
+- HTTP API testing for all orchestrator tools
 - Claude Code MCP bridge integration
-- Performance testing and optimization
-- Security validation
+- Security policy enforcement testing
+- Performance testing of container-to-container communication
 
-### **Phase 4: Documentation & Deployment** (Days 11-12)
-- Update all documentation files
-- Deploy enhanced server
-- Complete integration testing
-- Update SYSTEM-OVERVIEW.md
+### **Phase 4: Documentation & Final Deployment** (Days 7-8)
+- Update all documentation files with microservice architecture
+- Deploy complete enhanced infrastructure
+- Complete end-to-end integration testing
+- Update SYSTEM-OVERVIEW.md with new container inventory
 
 ## 🔒 Security & Configuration
 
-### **Enhanced Security Model**
+### **Enhanced Security Model** (ORCHESTRATOR PATTERN)
 ```python
-# Security controls for new tools
+# Security controls for orchestrator wrapper tools
 SECURITY_POLICIES = {
     "n8n": {
         "read_only": False,  # Workflows can be modified
         "allowed_operations": ["list", "get", "execute", "activate", "deactivate"],
         "restricted_workflows": [],  # Configurable workflow restrictions
+        "container_name": "mcp-n8n",  # Target container for orchestration
     },
     "playwright": {
         "allowed_domains": ["*.ai-servicers.com", "localhost", "127.0.0.1"],
         "blocked_domains": ["*.banking.com", "*.financial.*"],
         "max_execution_time": 30000,  # 30 second timeout
         "headless_only": True,  # No GUI browsers in production
+        "container_name": "mcp-playwright",  # Target container for orchestration
     },
     "timescaledb": {
         "read_only": False,  # Allow data modifications
         "allowed_operations": ["SELECT", "INSERT", "UPDATE", "CREATE", "ALTER"],
         "restricted_tables": [],  # Configurable table restrictions
+        "direct_integration": True,  # Enhanced existing implementation (not containerized)
     }
 }
+
+# Critical Implementation Note:
+# Each Python wrapper tool MUST explicitly load and enforce these policies
+# BEFORE making calls to the dedicated MCP containers.
 ```
 
 ### **Configuration Management**
@@ -517,15 +633,23 @@ docker compose restart  # Restart with original 12 tools
 
 ## 📋 Resource Requirements
 
-### **Development Resources**
-- **Implementation Time**: 12 days estimated
-- **Testing Resources**: Comprehensive tool validation matrix
+### **Development Resources** (REVISED)
+- **Implementation Time**: **6-8 days** (reduced from 12 days with microservice approach)
+  - Day 1-2: Container deployment and orchestration setup
+  - Day 3-4: Wrapper tool implementation and security integration
+  - Day 5-6: Testing and documentation
+  - Day 7-8: Performance optimization and final validation
+- **Testing Resources**: Comprehensive tool validation matrix (simplified with proven containers)
 - **Documentation Updates**: Multiple files across project
 
-### **Infrastructure Impact**
-- **Container Resources**: Minimal increase (same container, more tools)
-- **Network Requirements**: Additional service connections (n8n, TimescaleDB)
-- **Storage**: Configuration and log storage increase
+### **Infrastructure Impact** (REVISED)
+- **Container Resources**: **Moderate increase** (3 additional MCP containers)
+  - `mcp-n8n`: Dedicated n8n MCP service container
+  - `mcp-playwright`: Microsoft's Playwright MCP container
+  - `mcp-timescaledb`: Enhanced existing TimescaleDB container
+- **Network Requirements**: Additional inter-container communication
+- **Storage**: Configuration, browser cache, and log storage increase
+- **Trade-off Analysis**: Moderate infrastructure increase for massive development risk reduction
 
 ### **Dependencies**
 - **External Services**: n8n instance, TimescaleDB instance (both operational)
@@ -551,7 +675,46 @@ docker compose restart  # Restart with original 12 tools
 
 **Status**: 🚧 **Ready for Implementation** - All research completed, best implementations identified, integration plan defined.
 
+## 🎯 Strategic Refinements Applied
+
+**Expert Feedback Incorporated** (Based on comprehensive technical review):
+
+### **🔄 Major Strategic Change: Microservice Architecture**
+**Original Plan**: Re-implement Node.js tools (n8n-mcp, playwright-mcp) in Python within centralized server
+**Refined Plan**: Deploy best-in-class implementations as dedicated microservice containers with orchestrator pattern
+
+**Benefits Realized**:
+- ✅ **Implementation time reduced from 12 to 6-8 days**
+- ✅ **Eliminated massive re-implementation risk**
+- ✅ **Preserved ability to receive updates from original open-source projects**
+- ✅ **Reduced central server complexity** (orchestrator vs. monolithic)
+- ✅ **Increased reliability** using proven, battle-tested implementations
+
+**Trade-off Accepted**: Infrastructure impact increased from "Minimal" to "Moderate" (3 additional containers)
+
+### **🔒 Security Implementation Endorsed**
+- **SECURITY_POLICIES dictionary**: Proactive security design validated
+- **Enforcement Strategy**: Each wrapper tool explicitly validates against policies before container calls
+- **Domain restrictions, operation controls, and timeout policies**: All maintained in orchestrator pattern
+
+### **📊 Gradual Rollout Strategy Confirmed**
+- **Phase A**: n8n tools (lowest risk, immediate workflow automation value)
+- **Phase B**: TimescaleDB enhancement (build on existing operational implementation)
+- **Phase C**: Playwright integration (highest complexity, browser automation capabilities)
+
+### **🏗️ Architecture Impact**
+- **Before**: Single centralized Python server with 40+ reimplemented tools
+- **After**: Orchestrator pattern with proven microservices + thin Python wrappers
+- **Result**: Enterprise-grade reliability with dramatically reduced implementation risk
+
+---
+
+**Expected Result**: Transform our MCP infrastructure into a comprehensive 40+ tool AI assistant platform using proven implementations as microservices, delivering full-stack automation capabilities with minimal development risk.
+
+**Status**: 🚀 **Implementation-Ready** - Strategic refinements applied, risk mitigated, proven architecture designed.
+
 ---
 *Created: 2025-09-14*
-*Research Phase: Complete*
-*Next Step: Begin Phase 1 Implementation*
+*Strategic Refinement: Expert feedback incorporated*
+*Implementation Risk: Dramatically reduced via microservice approach*
+*Next Step: Begin Phase 1 Container Deployment*
