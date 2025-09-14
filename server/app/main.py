@@ -178,10 +178,11 @@ def postgres_list_tables(schema: str = "public", database: str = None) -> str:
 @tool
 def postgres_server_info() -> str:
     """Get comprehensive PostgreSQL server information and statistics"""
+    from postgres_modern import postgres_server_info as postgres_server_info_impl
     logger.info("Getting PostgreSQL server information")
 
     try:
-        result = run_async_query(postgres_server_info())
+        result = run_async_query(postgres_server_info_impl())
         logger.info("Server information retrieved successfully")
         return result
     except Exception as e:
@@ -191,10 +192,11 @@ def postgres_server_info() -> str:
 @tool
 def postgres_database_sizes() -> str:
     """Get database sizes and connection statistics"""
+    from postgres_modern import postgres_database_sizes as postgres_database_sizes_impl
     logger.info("Getting database size information")
 
     try:
-        result = run_async_query(postgres_database_sizes())
+        result = run_async_query(postgres_database_sizes_impl())
         logger.info("Database sizes retrieved successfully")
         return result
     except Exception as e:
