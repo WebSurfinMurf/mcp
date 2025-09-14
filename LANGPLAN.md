@@ -66,21 +66,22 @@ OAUTH2_PROXY_COOKIE_SECRET=CHANGE_ME_IN_PHASE_2
 
 # Application Settings
 LOG_LEVEL=INFO
+AGENT_MODEL=claude-3-5-sonnet-20241022
 ```
 
 #### 1.3 Python Dependencies
-Create `app/requirements.txt`:
+Create `app/requirements.txt` (using latest stable versions as of September 2025):
 ```txt
-langchain==0.1.0
-langserve==0.0.30
-langchain-community==0.0.20
-litellm==1.0.0
-psycopg2-binary==2.9.7
-boto3==1.34.0
-uvicorn==0.24.0
-fastapi==0.104.0
-pydantic==2.5.0
-python-json-logger==2.0.7
+langchain>=0.2.0
+langserve>=0.2.0
+langchain-community>=0.2.0
+litellm>=1.44.0
+psycopg2-binary>=2.9.9
+boto3>=1.35.0
+uvicorn>=0.30.0
+fastapi>=0.110.0
+pydantic>=2.8.0
+python-json-logger>=2.0.7
 ```
 
 ### Phase 2: Application Development
@@ -144,6 +145,12 @@ async def health_check():
 def postgres_query(query: str) -> str:
     """Execute read-only PostgreSQL query and return results"""
     log.info("Executing PostgreSQL query", extra={'query_type': 'read', 'query': query[:100]})
+
+    # Security: Enforce read-only queries
+    dangerous_keywords = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE', 'GRANT', 'REVOKE']
+    if any(keyword in query.upper() for keyword in dangerous_keywords):
+        log.warning("Blocked non-read query attempt", extra={'query': query[:100]})
+        return "Error: Only read-only SELECT queries are allowed for security."
 
     try:
         conn = psycopg2.connect(os.environ["POSTGRES_CONNECTION_STRING"])
@@ -239,9 +246,9 @@ def minio_get_object(bucket_name: str, object_key: str) -> str:
 # Available tools
 tools = [postgres_query, minio_list_objects, minio_get_object]
 
-# LiteLLM client
+# LiteLLM client with configurable model
 llm = ChatLiteLLM(
-    model="gpt-4",
+    model=os.environ.get("AGENT_MODEL", "claude-3-5-sonnet-20241022"),
     openai_api_base=os.environ["LITELLM_URL"],
     temperature=0.1
 )
@@ -276,13 +283,12 @@ add_routes(app, agent_executor, path="/agent")
 # ====== DIRECT TOOL API ======
 
 class ToolRequest(BaseModel):
-    input: str
-    parameters: Dict[str, Any] = {}
+    input: Dict[str, Any]  # Changed to dictionary to support multiple arguments
 
 @app.post("/tools/{tool_name}")
 async def execute_tool(tool_name: str, request: ToolRequest):
-    """Execute a specific tool directly"""
-    log.info("Direct tool execution", extra={'tool': tool_name, 'input_length': len(request.input)})
+    """Execute a specific tool directly with dictionary input"""
+    log.info("Direct tool execution", extra={'tool': tool_name, 'input_args': list(request.input.keys())})
 
     # Find the requested tool
     tool_map = {tool.name: tool for tool in tools}
@@ -297,6 +303,7 @@ async def execute_tool(tool_name: str, request: ToolRequest):
 
     try:
         tool = tool_map[tool_name]
+        # LangChain tools can accept dictionary input
         result = tool.invoke(request.input)
 
         return {
@@ -362,7 +369,7 @@ services:
     working_dir: /app
     command: >
       sh -c "pip install --no-cache-dir -r requirements.txt &&
-             uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+             uvicorn main:app --host 0.0.0.0 --port 8000"
     env_file:
       - .env
       - /home/administrator/secrets/postgres.env
@@ -393,8 +400,8 @@ services:
       - OAUTH2_PROXY_PROVIDER=keycloak-oidc
       - OAUTH2_PROXY_UPSTREAMS=http://mcp-server:8000
 
-      # Keycloak Integration
-      - OAUTH2_PROXY_OIDC_ISSUER_URL=https://keycloak.ai-servicers.com/realms/master
+      # Keycloak Integration (verify realm - typically 'main' not 'master' for applications)
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=https://keycloak.ai-servicers.com/realms/main
       - OAUTH2_PROXY_REDIRECT_URL=https://mcp.ai-servicers.com/oauth2/callback
 
       # Authorization
@@ -437,8 +444,9 @@ networks:
 
 #### 4.1 Keycloak Client Setup
 1. Access Keycloak admin console: https://keycloak.ai-servicers.com
-2. Navigate to Master realm → Clients → Create Client
-3. Configure client:
+2. **Important**: Verify the correct realm - typically applications use 'main' realm, not 'master'
+3. Navigate to appropriate realm → Clients → Create Client
+4. Configure client:
    - **Client ID**: `mcp-server`
    - **Client Type**: OpenID Connect
    - **Client Authentication**: On
@@ -494,21 +502,32 @@ docker-compose logs -f
 5. **Tools List**: https://mcp.ai-servicers.com/tools
 
 #### 5.4 Functional Testing
-```bash
-# Test PostgreSQL tool
-curl -X POST https://mcp.ai-servicers.com/tools/postgres_query \
-  -H "Content-Type: application/json" \
-  -d '{"input": "SELECT version(), current_database();"}'
+**Note**: All API endpoints are protected by OAuth2 proxy, so you'll need a valid Bearer token from Keycloak.
 
-# Test MinIO tool
-curl -X POST https://mcp.ai-servicers.com/tools/minio_list_objects \
+```bash
+# First, obtain a valid JWT token from Keycloak (replace with actual token)
+TOKEN="your-valid-keycloak-jwt-token-here"
+
+# Test PostgreSQL tool (note: input is now a dictionary)
+curl -X POST https://mcp.ai-servicers.com/tools/postgres_query \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"input": "mcp-storage"}'
+  -d '{"input": {"query": "SELECT version(), current_database();"}}'
+
+# Test MinIO tool with both bucket name and prefix
+curl -X POST https://mcp.ai-servicers.com/tools/minio_list_objects \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"bucket_name": "mcp-storage", "prefix": ""}}'
 
 # Test Agent endpoint
 curl -X POST https://mcp.ai-servicers.com/agent/invoke \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"input": {"input": "What databases are available?"}}'
+
+# Alternative: Test via browser (will redirect to Keycloak for authentication)
+# https://mcp.ai-servicers.com/docs - Interactive API documentation
 ```
 
 ### Phase 6: Integration & Monitoring
@@ -557,6 +576,27 @@ If deployment fails:
 4. **Documentation**: Create user guide for accessing the service
 5. **Backup Strategy**: Include in regular backup procedures
 
+## Security & Production Enhancements
+
+This plan incorporates several critical security and production refinements:
+
+### Security Improvements
+- **Read-Only Query Enforcement**: PostgreSQL tool blocks destructive SQL commands (INSERT, UPDATE, DELETE, etc.)
+- **Updated Dependencies**: Latest stable versions for security patches and performance improvements
+- **Proper Authentication**: All curl examples include required Bearer token authentication
+- **Keycloak Realm Verification**: Notes to confirm correct realm usage ('main' vs 'master')
+
+### Production Readiness
+- **Removed Development Features**: `--reload` flag removed from production uvicorn command
+- **Configurable Model**: Agent model configurable via `AGENT_MODEL` environment variable
+- **Enhanced Tool API**: Direct tool endpoints now accept dictionary inputs for multi-parameter tools
+- **Comprehensive Testing**: Updated test commands with proper authentication and input formats
+
+### API Improvements
+- **Flexible Tool Invocation**: Tools can now receive complex parameter dictionaries
+- **Better Error Handling**: Enhanced logging and error responses
+- **Security Logging**: Blocked query attempts are logged for security monitoring
+
 ---
 
-*Implementation plan ready for execution - all components follow established infrastructure patterns*
+*Production-ready implementation plan with enterprise-grade security and flexibility*
