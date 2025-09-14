@@ -28,7 +28,178 @@ User → Traefik → OAuth2 Proxy → LangChain Server → Backend Services
 
 ## Implementation Phases
 
-### Phase 1: Project Structure Setup
+### Phase 1: MCP Connector Validation and Selection
+
+**CRITICAL**: Before implementing the centralized server, we must validate and potentially update our existing MCP service implementations against the official standards to ensure we're integrating the best versions.
+
+#### 1.1 Service Implementation Analysis
+
+Based on current directory state analysis:
+
+| Service | Current Status | Implementation | Quality Assessment |
+|---------|---------------|----------------|-------------------|
+| **monitoring** | ✅ **Implemented** | Node.js + MCP SDK 1.13.1, 5 tools (Loki/Netdata integration) | **KEEP** - Custom, well-integrated |
+| **timescaledb** | ✅ **Implemented** | Python + MCP SDK 1.13.1, 9 tools, operational | **KEEP** - Custom, specific to our setup |
+| **fetch** | ❌ **Empty** | No implementation | **DOWNLOAD OFFICIAL** |
+| **filesystem** | ❌ **Empty** | No implementation | **DOWNLOAD OFFICIAL** |
+| **postgres** | ❌ **Empty** | No implementation | **IMPLEMENT CUSTOM** |
+| **memory-postgres** | ❌ **Empty** | No implementation | **RESEARCH NEEDED** |
+| **n8n** | 🔄 **Partial** | Node.js structure, needs validation | **VALIDATE/UPDATE** |
+| **playwright** | 🔄 **Partial** | Node.js structure, needs validation | **VALIDATE/UPDATE** |
+
+#### 1.2 Official MCP Server Downloads
+
+Download and integrate official implementations where appropriate:
+
+```bash
+# Create validation workspace
+mkdir -p /home/administrator/projects/mcp/validation
+cd /home/administrator/projects/mcp/validation
+
+# Download official filesystem server (TypeScript)
+echo "Downloading official filesystem MCP server..."
+git clone --depth 1 --filter=blob:none --sparse https://github.com/modelcontextprotocol/servers.git official-servers
+cd official-servers
+git sparse-checkout set src/filesystem
+cd ..
+
+# Download official fetch server (Python)
+echo "Downloading official fetch MCP server..."
+mkdir -p official-fetch
+cd official-fetch
+git clone --depth 1 --filter=blob:none --sparse https://github.com/modelcontextprotocol/servers.git .
+git sparse-checkout set src/fetch
+cd ..
+```
+
+#### 1.3 Implementation Validation Process
+
+For each service, perform the following validation:
+
+```bash
+#!/bin/bash
+# /home/administrator/projects/mcp/validation/validate-service.sh
+
+SERVICE_NAME=$1
+echo "=== Validating MCP Service: $SERVICE_NAME ==="
+
+# Check current implementation
+CURRENT_DIR="/home/administrator/projects/mcp/$SERVICE_NAME"
+OFFICIAL_DIR="/home/administrator/projects/mcp/validation/official-servers/src/$SERVICE_NAME"
+
+if [ -d "$CURRENT_DIR" ] && [ "$(ls -A $CURRENT_DIR)" ]; then
+    echo "✓ Current implementation exists"
+
+    # Analyze current implementation
+    if [ -f "$CURRENT_DIR/package.json" ]; then
+        echo "  Language: Node.js/TypeScript"
+        echo "  MCP SDK Version: $(cat $CURRENT_DIR/package.json | jq -r '.dependencies["@modelcontextprotocol/sdk"] // "Not specified"')"
+    elif [ -f "$CURRENT_DIR/requirements.txt" ]; then
+        echo "  Language: Python"
+        echo "  MCP SDK Version: $(grep -i mcp $CURRENT_DIR/requirements.txt || echo "Not specified")"
+    elif [ -f "$CURRENT_DIR/server.py" ]; then
+        echo "  Language: Python (custom)"
+    fi
+
+    # Check if operational
+    if [ -f "$CURRENT_DIR/CLAUDE.md" ]; then
+        STATUS=$(grep -E "Status.*:" "$CURRENT_DIR/CLAUDE.md" | head -1 || echo "Status not documented")
+        echo "  Current Status: $STATUS"
+    fi
+
+    echo "  Decision: VALIDATE_CURRENT"
+else
+    echo "✗ No current implementation"
+
+    # Check if official version exists
+    if [ -d "$OFFICIAL_DIR" ]; then
+        echo "  Official implementation found"
+        echo "  Decision: USE_OFFICIAL"
+    else
+        echo "  No official implementation"
+        echo "  Decision: IMPLEMENT_CUSTOM"
+    fi
+fi
+
+echo ""
+```
+
+#### 1.4 Service Integration Decisions
+
+**KEEP Current (Custom & Working):**
+- `monitoring` - Our Loki/Netdata integration is custom and operational
+- `timescaledb` - Custom Python implementation specific to our TimescaleDB setup
+
+**USE Official Implementation:**
+- `fetch` - Download official Python fetch server from modelcontextprotocol/servers
+- `filesystem` - Download official TypeScript filesystem server (or convert to Python)
+
+**IMPLEMENT Custom:**
+- `postgres` - Create PostgreSQL connector optimized for our setup
+- `memory-postgres` - Research vector memory requirements
+
+**VALIDATE Existing:**
+- `n8n` - Check against current n8n integration patterns
+- `playwright` - Validate browser automation implementation
+
+#### 1.5 Tool Consolidation Plan
+
+The centralized LangChain server will incorporate validated tools from each service:
+
+**From monitoring service (KEEP):**
+```python
+@tool
+def search_logs(query: str, hours: int = 24, limit: int = 100) -> str:
+    """Search logs using LogQL query language"""
+
+@tool
+def get_system_metrics(charts: List[str] = ["system.cpu", "system.ram"], after: int = 300) -> str:
+    """Get current system metrics from Netdata"""
+```
+
+**From official fetch (INTEGRATE):**
+```python
+@tool
+def fetch_web_content(url: str, max_length: int = 10000) -> str:
+    """Fetch and convert web content to markdown"""
+```
+
+**From official filesystem (INTEGRATE):**
+```python
+@tool
+def read_file(path: str) -> str:
+    """Securely read file content with path validation"""
+
+@tool
+def list_directory(path: str) -> str:
+    """List directory contents with access controls"""
+```
+
+**Custom PostgreSQL (IMPLEMENT):**
+```python
+@tool
+def postgres_query_advanced(query: str, params: List[Any] = None) -> str:
+    """Execute advanced PostgreSQL queries with our specific setup"""
+```
+
+#### 1.6 Validation Script Execution
+
+Run the validation process:
+
+```bash
+# Execute validation for all services
+cd /home/administrator/projects/mcp
+for service in fetch filesystem postgres memory-postgres monitoring n8n playwright timescaledb; do
+    ./validation/validate-service.sh $service
+done
+
+# Generate validation report
+echo "=== MCP Service Validation Summary ===" > validation-report.md
+echo "Date: $(date)" >> validation-report.md
+echo "" >> validation-report.md
+```
+
+### Phase 2: Project Structure Setup
 
 #### 1.1 Create Directory Structure
 Follow the standard directory pattern:
@@ -528,22 +699,21 @@ networks:
    - **Valid Redirect URIs**: `https://mcp.ai-servicers.com/oauth2/callback`
    - **Web Origins**: `https://mcp.ai-servicers.com`
 
-#### 4.2 Generate OAuth2 Secrets
-```bash
-# Generate cookie secret
-echo "OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 32)" >> .env.local
+#### 4.2 Complete Secret Management
+All secrets consolidated into the single official secrets file:
+`/home/administrator/projects/secrets/mcp-server.env`
 
-# Update .env file with actual client secret from Keycloak
+```bash
+# Generate and add OAuth2 secrets to the main secrets file
+echo "OAUTH2_PROXY_CLIENT_ID=mcp-server" >> /home/administrator/projects/secrets/mcp-server.env
+echo "OAUTH2_PROXY_CLIENT_SECRET=your-keycloak-client-secret-here" >> /home/administrator/projects/secrets/mcp-server.env
+echo "OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 32)" >> /home/administrator/projects/secrets/mcp-server.env
+
+# Set proper permissions
+chmod 600 /home/administrator/projects/secrets/mcp-server.env
 ```
 
-#### 4.3 Secret Management
-Create service-specific secrets file:
-```bash
-# /home/administrator/secrets/mcp-server.env
-OAUTH2_PROXY_CLIENT_ID=mcp-server
-OAUTH2_PROXY_CLIENT_SECRET=your-keycloak-client-secret-here
-OAUTH2_PROXY_COOKIE_SECRET=your-generated-cookie-secret
-```
+This creates a single, definitive source of truth for all service secrets following security best practices.
 
 ### Phase 5: Deployment & Testing
 
@@ -740,25 +910,8 @@ EOF
 
 ### Phase 7: Monitoring & Observability
 
-#### 7.1 Promtail Integration
-Add containers to Promtail for log collection:
-
-```bash
-# Edit Promtail configuration
-nano /home/administrator/projects/promtail/promtail-extended.yml
-
-# Add to extended_services list (around line 377-394):
-- name: name
-  values:
-    - mcp-server
-    - mcp-server-auth-proxy
-
-# Restart Promtail to pick up changes
-cd /home/administrator/projects/promtail && ./deploy.sh
-
-# Verify log collection
-docker logs promtail | grep "added Docker target.*mcp-server"
-```
+#### 7.1 Automatic Logging Integration
+The existing Promtail configuration uses **automatic Docker container discovery** - no manual configuration needed! As soon as the MCP server containers start, Promtail will automatically detect them and begin shipping logs to Loki.
 
 #### 7.2 Grafana/Loki Queries
 - Structured JSON format for easy querying
@@ -817,7 +970,7 @@ Update the following files:
 
 ### Logging Integration ✅
 - [x] Structured JSON logging to stdout
-- [x] Promtail integration instructions
+- [x] Automatic Promtail discovery (no manual configuration needed)
 - [x] Grafana/Loki query examples
 
 ## Success Criteria
@@ -848,6 +1001,16 @@ If deployment fails:
 3. **Feature Expansion**: Add additional MCP tools as needed
 4. **Documentation**: Create user guide for accessing the service
 5. **Backup Strategy**: Include in regular backup procedures
+
+## Future Considerations
+
+### Tool Naming Convention (Optional Enhancement)
+As the number of tools grows, consider adopting a prefixed naming convention for better organization:
+- `db_query` instead of `postgres_query`
+- `s3_list_objects` instead of `minio_list_objects`
+- `s3_get_object` instead of `minio_get_object`
+
+This provides clearer categorization and makes tools easier to discover and understand.
 
 ## Security & Production Enhancements
 
