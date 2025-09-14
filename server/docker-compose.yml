@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    image: python:3.11-slim-bookworm
+    container_name: mcp-server
+    restart: unless-stopped
+    volumes:
+      - ./app:/app:ro
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info"
+    environment:
+      # Load from multiple env files for proper credential inheritance
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - LITELLM_URL=http://litellm:4000
+      - MINIO_ENDPOINT_URL=http://minio:9000
+      - LOKI_URL=http://loki:3100
+      - NETDATA_URL=http://netdata:19999
+    env_file:
+      - /home/administrator/secrets/mcp-server.env
+      - /home/administrator/secrets/postgres.env
+      - /home/administrator/secrets/minio.env
+    networks:
+      - litellm-net
+      - postgres-net
+      - traefik-proxy
+      - observability-net
+      - mcp-internal-net  # Add dedicated internal network
+    # Expose internal port for direct access from other containers
+    expose:
+      - "8000"
+    labels:
+      # Traefik Configuration - Internal (Direct access, no auth)
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      - "traefik.http.routers.mcp-server-internal.entrypoints=web"
+      - "traefik.http.routers.mcp-server-internal.rule=Host(`mcp.linuxserver.lan`)"
+      - "traefik.http.routers.mcp-server-internal.service=mcp-server-direct"
+      - "traefik.http.services.mcp-server-direct.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  mcp-server-auth-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    container_name: mcp-server-auth-proxy
+    restart: unless-stopped
+    depends_on:
+      - mcp-server
+    networks:
+      - traefik-proxy
+      - keycloak-net
+    extra_hosts:
+      - "keycloak.ai-servicers.com:192.168.1.13"
+    environment:
+      # OAuth2 Proxy Configuration
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_PROVIDER=keycloak-oidc
+      - OAUTH2_PROXY_UPSTREAMS=http://mcp-server:8000
+
+      # Keycloak Integration
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=https://keycloak.ai-servicers.com/realms/master
+      - OAUTH2_PROXY_REDIRECT_URL=https://mcp.ai-servicers.com/oauth2/callback
+      - OAUTH2_PROXY_SKIP_OIDC_DISCOVERY=false
+      - OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true
+
+      # Authorization - Allow both administrators and developers
+      - OAUTH2_PROXY_ALLOWED_GROUPS=administrators,developers
+      - OAUTH2_PROXY_SCOPE=openid profile email groups
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*
+
+      # Security Settings
+      - OAUTH2_PROXY_COOKIE_SECURE=true
+      - OAUTH2_PROXY_COOKIE_HTTPONLY=true
+      - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+      - OAUTH2_PROXY_COOKIE_EXPIRE=24h
+      - OAUTH2_PROXY_COOKIE_REFRESH=1h
+
+      # Skip auth for health check and allow internal hostname
+      - OAUTH2_PROXY_SKIP_AUTH_ROUTES=^/health$
+
+    env_file:
+      - /home/administrator/secrets/mcp-server.env
+    labels:
+      # Traefik Configuration - External (OAuth2 protected)
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      - "traefik.http.routers.mcp-server-external.entrypoints=websecure"
+      - "traefik.http.routers.mcp-server-external.rule=Host(`mcp.ai-servicers.com`)"
+      - "traefik.http.routers.mcp-server-external.tls=true"
+      - "traefik.http.routers.mcp-server-external.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.mcp-server-external.service=mcp-server-auth-proxy"
+      - "traefik.http.services.mcp-server-auth-proxy.loadbalancer.server.port=4180"
+
+
+      # Security headers for external only (disabled - middleware not found)
+      # - "traefik.http.routers.mcp-server-external.middlewares=secure-headers@file"
+
+networks:
+  litellm-net:
+    external: true
+  postgres-net:
+    external: true
+  traefik-proxy:
+    external: true
+  keycloak-net:
+    external: true
+  observability-net:
+    external: true
+  mcp-internal-net:
+    driver: bridge
+    name: mcp-internal-net
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
