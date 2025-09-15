@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MCP_SERVER_URL = "http://mcp.linuxserver.lan"
+MCP_SERVER_URL = "http://localhost:8001"
 
 class MCPBridge:
     def __init__(self):
