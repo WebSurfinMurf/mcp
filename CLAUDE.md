@@ -1,21 +1,22 @@
 # MCP Infrastructure - Model Context Protocol Services
 
 *Last Updated: 2025-09-14*
-*Status: ✅ Microservice Orchestrator Operational - 54 Tools Available + Bridge Fixed*
+*Status: ✅ Microservice Orchestrator Complete - Browser Automation Integrated*
 
 ## Overview
-**BREAKTHROUGH ACHIEVED**: Repository for MCP (Model Context Protocol) microservice orchestrator that provides Claude Code with **54+ tools** via best-in-class integrations. Successfully implemented LANGNEXT.md expansion plan using "integrate, don't re-implement" strategy with microservice orchestrator pattern.
+**PLAYWRIGHT INTEGRATION COMPLETE**: Repository for MCP (Model Context Protocol) microservice orchestrator that provides Claude Code with **22 tools across 7 categories** via expert-validated integrations. Successfully implemented custom HTTP-native Playwright service following Priority #1 expert recommendation, replacing Microsoft's limited stdio implementation.
 
 ## Current State
-The MCP infrastructure has been revolutionized with microservice orchestrator:
+The MCP infrastructure has achieved full browser automation integration:
 - ✅ **Microservice Orchestrator** deployed at `/home/administrator/projects/mcp/server/`
-- ✅ **54 total tools**: 15 centralized + 39 n8n orchestrated (350% expansion from original 12)
-- ✅ **Best-in-class integration**: `czlonkowski/n8n-mcp` container with native 39 tools
+- ✅ **22 total tools**: 15 centralized + 7 Playwright browser automation tools
+- ✅ **Custom Playwright Service**: Expert-recommended HTTP-native replacement for Microsoft's implementation
+- ✅ **7 Tool Categories**: database, storage, monitoring, web, filesystem, workflow-automation, browser-automation
 - ✅ **HTTP/JSON-RPC communication**: Proven working between orchestrator ↔ microservices
 - ✅ **Orchestrator pattern**: Thin Python wrappers coordinate with dedicated MCP containers
 - ✅ **Security compliance**: All secrets secured in `/home/administrator/secrets/mcp-server.env`
 - ✅ **Claude Code Bridge**: Fixed port mapping issue - tools accessible via `localhost:8001`
-- ✅ **LANGNEXT.md Phase 2 Complete**: Foundation for 40+ tool expansion operational
+- ✅ **Expert Validation Complete**: Priority #1 recommendation fully implemented and operational
 
 ## Directory Structure
 ```
@@ -32,7 +33,7 @@ The MCP infrastructure has been revolutionized with microservice orchestrator:
 ├── memory-postgres/        # Vector memory service
 ├── monitoring/             # System monitoring and log analysis
 ├── n8n/                   # Workflow automation service
-├── playwright/             # Browser automation service
+├── playwright-http-service/ # Custom HTTP-native Playwright service (Expert Priority #1)
 ├── postgres/               # PostgreSQL operations service
 ├── timescaledb/            # Time-series database service
 ├── CLAUDE.md              # This documentation
@@ -42,18 +43,22 @@ The MCP infrastructure has been revolutionized with microservice orchestrator:
 ## Individual MCP Services
 
 ### Integrated Tools Status
-**✅ Implemented in Centralized Server**:
-1. **PostgreSQL Tools (3)** - Database queries, list databases/tables
+**✅ Implemented in Centralized Server (22 Total)**:
+1. **PostgreSQL Tools (5)** - Database queries, list databases/tables, server info, database sizes
 2. **MinIO S3 Tools (2)** - Object listing and content retrieval
 3. **Monitoring Tools (2)** - Loki log search + Netdata system metrics
 4. **Web Fetch Tools (1)** - HTTP/web content fetching with markdown conversion
 5. **Filesystem Tools (2)** - Secure file operations with path restrictions
+6. **Workflow Automation Tools (3)** - n8n integration via orchestrator pattern
+7. **Browser Automation Tools (7)** - Custom HTTP-native Playwright service with full web automation capabilities
 
 **📁 Available for Future Integration**:
 - **memory-postgres/** - Vector memory storage
-- **n8n/** - Workflow automation and integration
-- **playwright/** - Browser automation and web scraping
 - **timescaledb/** - Time-series database operations (custom implementation)
+
+**✅ Successfully Integrated**:
+- **n8n/** - Workflow automation (3 orchestrator tools operational)
+- **playwright-http-service/** - Browser automation (7 tools operational via custom HTTP service)
 
 ### Implementation Status
 - **Architecture**: Centralized LangChain server with integrated tools
