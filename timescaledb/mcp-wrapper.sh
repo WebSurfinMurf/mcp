@@ -18,7 +18,7 @@ fi
 : ${TSDB_PORT:="5433"}
 : ${TSDB_DATABASE:="timescale"}
 : ${TSDB_USER:="tsdbadmin"}
-: ${TSDB_PASSWORD:="TimescaleSecure2025"}
+: ${TSDB_PASSWORD:="${TSDB_PASSWORD}"}
 
 exec docker run --rm -i \
   --name "${CONTAINER_NAME}" \

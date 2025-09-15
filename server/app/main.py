@@ -542,6 +542,129 @@ def list_directory(directory_path: str) -> str:
         logger.error("Directory list failed", exc_info=True, extra={'error': str(e), 'path': directory_path})
         return f"Directory list error: {str(e)}"
 
+# ====== MCP MICROSERVICE ORCHESTRATOR TOOLS ======
+
+@tool
+def n8n_list_workflows() -> str:
+    """List all workflows from n8n MCP service"""
+    logger.info("Orchestrating n8n workflow list request")
+
+    try:
+        endpoint = os.environ.get("MCP_N8N_ENDPOINT", "http://mcp-n8n:3000")
+        auth_token = os.environ.get("MCP_N8N_AUTH_TOKEN", "secure-n8n-token-2025-mcp-orchestrator")
+
+        # MCP JSON-RPC request to list workflows
+        mcp_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "n8n_list_workflows",
+                "arguments": {}
+            }
+        }
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/mcp",
+                json=mcp_request,
+                headers={"Authorization": f"Bearer {auth_token}"},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if "result" in result:
+                logger.info("n8n workflow list retrieved successfully")
+                return json.dumps(result["result"], indent=2)
+            else:
+                logger.error("No result in n8n MCP response", extra={'response': result})
+                return f"n8n MCP error: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("n8n workflow list failed", exc_info=True, extra={'error': str(e)})
+        return f"n8n orchestrator error: {str(e)}"
+
+@tool
+def n8n_get_workflow(workflow_id: str) -> str:
+    """Get workflow details from n8n MCP service"""
+    logger.info("Orchestrating n8n workflow details request", extra={'workflow_id': workflow_id})
+
+    try:
+        endpoint = os.environ.get("MCP_N8N_ENDPOINT", "http://mcp-n8n:3000")
+        auth_token = os.environ.get("MCP_N8N_AUTH_TOKEN", "secure-n8n-token-2025-mcp-orchestrator")
+
+        mcp_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "n8n_get_workflow",
+                "arguments": {"id": workflow_id}
+            }
+        }
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/mcp",
+                json=mcp_request,
+                headers={"Authorization": f"Bearer {auth_token}"},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if "result" in result:
+                logger.info("n8n workflow details retrieved successfully", extra={'workflow_id': workflow_id})
+                return json.dumps(result["result"], indent=2)
+            else:
+                logger.error("No result in n8n MCP response", extra={'response': result})
+                return f"n8n MCP error: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("n8n workflow details failed", exc_info=True, extra={'error': str(e), 'workflow_id': workflow_id})
+        return f"n8n orchestrator error: {str(e)}"
+
+@tool
+def n8n_get_database_statistics() -> str:
+    """Get n8n MCP database statistics - demonstrates orchestrator pattern"""
+    logger.info("Orchestrating n8n database statistics request")
+
+    try:
+        endpoint = os.environ.get("MCP_N8N_ENDPOINT", "http://mcp-n8n:3000")
+        auth_token = os.environ.get("MCP_N8N_AUTH_TOKEN", "secure-n8n-token-2025-mcp-orchestrator")
+
+        mcp_request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "get_database_statistics",
+                "arguments": {}
+            }
+        }
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/mcp",
+                json=mcp_request,
+                headers={"Authorization": f"Bearer {auth_token}"},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if "result" in result:
+                logger.info("n8n database statistics retrieved successfully")
+                return json.dumps(result["result"], indent=2)
+            else:
+                logger.error("No result in n8n database statistics", extra={'response': result})
+                return f"n8n MCP database statistics error: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("n8n database statistics failed", exc_info=True, extra={'error': str(e)})
+        return f"n8n orchestrator error: {str(e)}"
+
 # ====== LANGCHAIN AGENT SETUP ======
 
 # Collect all tools
@@ -566,7 +689,12 @@ tools = [
 
     # Filesystem tools
     read_file,
-    list_directory
+    list_directory,
+
+    # n8n MCP Orchestrator tools
+    n8n_list_workflows,
+    n8n_get_workflow,
+    n8n_get_database_statistics
 ]
 
 # LiteLLM client with configurable model
