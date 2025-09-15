@@ -47,7 +47,7 @@
 ## Individual MCP Services
 
 ### Integrated Tools Status
-**✅ Implemented in Centralized Server (25+ Total)**:
+**✅ Implemented in Centralized Server (31 Total)**:
 1. **PostgreSQL Tools (5)** - Database queries, list databases/tables, server info, database sizes
 2. **MinIO S3 Tools (2)** - Object listing and content retrieval
 3. **Monitoring Tools (2)** - Loki log search + Netdata system metrics
@@ -55,17 +55,17 @@
 5. **Filesystem Tools (2)** - Secure file operations with path restrictions
 6. **Workflow Automation Tools (3)** - n8n integration via orchestrator pattern
 7. **Browser Automation Tools (7)** - Custom HTTP-native Playwright service with full web automation capabilities
-8. **Time-Series Database Tools (3+)** - TimescaleDB HTTP service with query, stats, and hypertable management
+8. **Time-Series Database Tools (9)** - TimescaleDB HTTP service with complete time-series functionality
 
 **📁 Available for Future Integration**:
 - **memory-postgres/** - Vector memory storage
 
 **✅ Successfully Integrated**:
 - **n8n/** - Workflow automation (3 orchestrator tools operational)
-- **playwright-http-service/** - Browser automation (7 tools operational via custom HTTP service)
-- **timescaledb-http-service/** - Time-series database (3+ orchestrator tools operational, eliminated restart loop)
+- **playwright/** - Browser automation (7 tools operational via custom HTTP service)
+- **timescaledb/** - Time-series database (9 orchestrator tools operational, eliminated restart loop)
 
-## Complete Tool Reference (25 Tools)
+## Complete Tool Reference (31 Tools)
 
 ### 🗄️ Database Tools (5 tools)
 1. **postgres_query** - Execute read-only PostgreSQL query with modern async implementation

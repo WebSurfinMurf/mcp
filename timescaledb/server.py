@@ -1,542 +1,664 @@
 #!/usr/bin/env python3
 """
-MCP Server for TimescaleDB
-Provides time-series specific database operations
+TimescaleDB HTTP-Native MCP Service
+Provides time-series database operations via HTTP REST API
 """
 
 import os
-import asyncio
 import json
+import asyncio
 import logging
-from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
+import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+from contextlib import asynccontextmanager
 
 import asyncpg
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import (
-    Tool,
-    TextContent,
-    Resource,
-)
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+import uvicorn
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Database configuration from environment
 DB_CONFIG = {
-    "host": os.getenv("TSDB_HOST", "localhost"),
-    "port": int(os.getenv("TSDB_PORT", "5432")),
-    "database": os.getenv("TSDB_DATABASE", "postgres"),
-    "user": os.getenv("TSDB_USER"),
-    "password": os.getenv("TSDB_PASSWORD"),
+    "host": os.getenv("TSDB_HOST", "timescaledb"),
+    "port": int(os.getenv("TSDB_PORT", "5432")),  # Internal port, not external 5433
+    "database": os.getenv("TSDB_DATABASE", "timescale"),
+    "user": os.getenv("TSDB_USER", "tsdbadmin"),
+    "password": os.getenv("TSDB_PASSWORD", "TimescaleSecure2025"),
+    "min_size": 2,
+    "max_size": 10,
+    "command_timeout": 60,
+    "server_settings": {
+        "application_name": "mcp-timescaledb-http"
+    }
 }
 
-class TimescaleDBServer:
+# Global database pool
+db_pool: Optional[asyncpg.Pool] = None
+
+# Request/Response Models
+class ToolRequest(BaseModel):
+    input: Dict[str, Any] = Field(default_factory=dict)
+
+class ToolResponse(BaseModel):
+    tool: str
+    result: Union[str, Dict[str, Any]]
+    requestId: int
+    timestamp: str
+    status: str
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    database: str
+    timestamp: str
+    pool_stats: Optional[Dict[str, Any]] = None
+
+class ServiceInfo(BaseModel):
+    name: str
+    version: str
+    description: str
+    tools_count: int
+    database_connection: str
+    timestamp: str
+
+# Database Connection Management
+class TimescaleDBManager:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
-        
+
     async def initialize(self):
-        """Initialize database connection pool"""
+        """Initialize database connection pool - SINGLE LOG MESSAGE"""
         try:
-            self.pool = await asyncpg.create_pool(
-                **DB_CONFIG,
-                min_size=1,
-                max_size=10,
-                command_timeout=60
-            )
-            logger.info("Connected to TimescaleDB")
+            self.pool = await asyncpg.create_pool(**DB_CONFIG)
+            # Test connection with a simple query
+            async with self.pool.acquire() as conn:
+                version = await conn.fetchval("SELECT version()")
+                logger.info(f"TimescaleDB HTTP service initialized successfully - {version[:50]}...")
+            return True
         except Exception as e:
-            logger.error(f"Failed to connect to TimescaleDB: {e}")
-            raise
-    
+            logger.error(f"Failed to initialize TimescaleDB connection: {e}")
+            return False
+
     async def cleanup(self):
-        """Cleanup database connections"""
+        """Clean up database connections"""
         if self.pool:
             await self.pool.close()
-    
+            logger.info("TimescaleDB connection pool closed")
+
     async def execute_query(self, query: str, params: List[Any] = None) -> List[Dict[str, Any]]:
-        """Execute a query and return results as list of dicts"""
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, *(params or []))
-            return [dict(row) for row in rows]
-    
+        """Execute SELECT query and return results as list of dicts"""
+        if not self.pool:
+            raise HTTPException(status_code=503, detail="Database not connected")
+
+        try:
+            async with self.pool.acquire() as conn:
+                if params:
+                    rows = await conn.fetch(query, *params)
+                else:
+                    rows = await conn.fetch(query)
+
+                # Convert rows to list of dicts
+                result = []
+                for row in rows:
+                    result.append(dict(row))
+                return result
+        except Exception as e:
+            logger.error(f"Query execution failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
     async def execute_command(self, command: str, params: List[Any] = None) -> str:
-        """Execute a command and return status message"""
-        async with self.pool.acquire() as conn:
-            result = await conn.execute(command, *(params or []))
-            return result
+        """Execute non-SELECT command and return status"""
+        if not self.pool:
+            raise HTTPException(status_code=503, detail="Database not connected")
 
-# Create server instance
-tsdb_server = TimescaleDBServer()
-server = Server("mcp-timescaledb")
+        try:
+            async with self.pool.acquire() as conn:
+                if params:
+                    result = await conn.execute(command, *params)
+                else:
+                    result = await conn.execute(command)
+                return result
+        except Exception as e:
+            logger.error(f"Command execution failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Command failed: {str(e)}")
 
-@server.list_tools()
-async def list_tools() -> List[Tool]:
-    """List available TimescaleDB tools"""
-    return [
-        Tool(
-            name="tsdb_query",
-            description="Execute a SELECT query on TimescaleDB",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "SQL SELECT query to execute"
-                    }
-                },
-                "required": ["query"]
-            }
-        ),
-        Tool(
-            name="tsdb_execute",
-            description="Execute a non-SELECT SQL command (INSERT, UPDATE, DELETE, CREATE, etc.)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "SQL command to execute"
-                    }
-                },
-                "required": ["command"]
-            }
-        ),
-        Tool(
-            name="tsdb_create_hypertable",
-            description="Convert a regular table to a TimescaleDB hypertable",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "table_name": {
-                        "type": "string",
-                        "description": "Name of the table to convert"
-                    },
-                    "time_column": {
-                        "type": "string",
-                        "description": "Name of the time column",
-                        "default": "time"
-                    },
-                    "chunk_time_interval": {
-                        "type": "string",
-                        "description": "Chunk time interval (e.g., '1 day', '1 week')",
-                        "default": "1 week"
-                    }
-                },
-                "required": ["table_name"]
-            }
-        ),
-        Tool(
-            name="tsdb_show_hypertables",
-            description="List all hypertables in the database",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
-        ),
-        Tool(
-            name="tsdb_show_chunks",
-            description="Show chunks for a specific hypertable",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "hypertable": {
-                        "type": "string",
-                        "description": "Name of the hypertable"
-                    }
-                },
-                "required": ["hypertable"]
-            }
-        ),
-        Tool(
-            name="tsdb_compression_stats",
-            description="Show compression statistics for hypertables",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "hypertable": {
-                        "type": "string",
-                        "description": "Optional: specific hypertable name"
-                    }
-                }
-            }
-        ),
-        Tool(
-            name="tsdb_add_compression",
-            description="Add compression policy to a hypertable",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "hypertable": {
-                        "type": "string",
-                        "description": "Name of the hypertable"
-                    },
-                    "compress_after": {
-                        "type": "string",
-                        "description": "Compress chunks older than this (e.g., '7 days', '1 month')",
-                        "default": "7 days"
-                    }
-                },
-                "required": ["hypertable"]
-            }
-        ),
-        Tool(
-            name="tsdb_continuous_aggregate",
-            description="Create a continuous aggregate view",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "view_name": {
-                        "type": "string",
-                        "description": "Name for the continuous aggregate view"
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": "SELECT query with time_bucket"
-                    }
-                },
-                "required": ["view_name", "query"]
-            }
-        ),
-        Tool(
-            name="tsdb_time_bucket_query",
-            description="Execute a time-bucket aggregation query",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "table": {
-                        "type": "string",
-                        "description": "Table name"
-                    },
-                    "time_column": {
-                        "type": "string",
-                        "description": "Time column name",
-                        "default": "time"
-                    },
-                    "bucket_interval": {
-                        "type": "string",
-                        "description": "Bucket interval (e.g., '5 minutes', '1 hour')",
-                        "default": "1 hour"
-                    },
-                    "aggregates": {
-                        "type": "array",
-                        "description": "List of aggregations (e.g., ['AVG(temperature)', 'MAX(humidity)'])",
-                        "items": {"type": "string"}
-                    },
-                    "group_by": {
-                        "type": "array",
-                        "description": "Additional GROUP BY columns",
-                        "items": {"type": "string"}
-                    },
-                    "where": {
-                        "type": "string",
-                        "description": "Optional WHERE clause"
-                    }
-                },
-                "required": ["table", "aggregates"]
-            }
-        ),
-        Tool(
-            name="tsdb_database_stats",
-            description="Get database and hypertable statistics",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
-        )
+    def get_pool_stats(self) -> Dict[str, Any]:
+        """Get connection pool statistics"""
+        if not self.pool:
+            return {"status": "not_connected"}
+
+        return {
+            "size": self.pool.get_size(),
+            "idle": self.pool.get_idle_size(),
+            "max_size": self.pool.get_max_size(),
+            "min_size": self.pool.get_min_size()
+        }
+
+# Global database manager
+db_manager = TimescaleDBManager()
+
+# FastAPI Application Lifecycle
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting TimescaleDB HTTP service...")
+    success = await db_manager.initialize()
+    if not success:
+        logger.error("Failed to initialize database - service may not work correctly")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down TimescaleDB HTTP service...")
+    await db_manager.cleanup()
+
+# FastAPI Application
+app = FastAPI(
+    title="TimescaleDB HTTP MCP Service",
+    description="HTTP-native TimescaleDB MCP service providing time-series database operations",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Utility Functions
+def generate_request_id() -> int:
+    """Generate unique request ID"""
+    return int(time.time() * 1000)
+
+def get_timestamp() -> str:
+    """Get current ISO timestamp"""
+    return datetime.now().isoformat() + "Z"
+
+def create_response(tool_name: str, result: Union[str, Dict[str, Any]], request_id: int = None) -> ToolResponse:
+    """Create standardized tool response"""
+    return ToolResponse(
+        tool=tool_name,
+        result=result,
+        requestId=request_id or generate_request_id(),
+        timestamp=get_timestamp(),
+        status="success"
+    )
+
+# Core Endpoints
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    database_status = "connected" if db_manager.pool else "disconnected"
+    pool_stats = db_manager.get_pool_stats()
+
+    return HealthResponse(
+        status="ok",
+        service="timescaledb-http-service",
+        database=database_status,
+        timestamp=get_timestamp(),
+        pool_stats=pool_stats
+    )
+
+@app.get("/info", response_model=ServiceInfo)
+async def service_info():
+    """Service information endpoint"""
+    return ServiceInfo(
+        name="TimescaleDB HTTP MCP Service",
+        version="1.0.0",
+        description="HTTP-native service providing TimescaleDB time-series database operations",
+        tools_count=9,
+        database_connection=f"{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}",
+        timestamp=get_timestamp()
+    )
+
+@app.get("/tools")
+async def list_tools():
+    """List all available tools"""
+    tools = [
+        {
+            "name": "tsdb_query",
+            "description": "Execute SELECT queries against TimescaleDB",
+            "parameters": ["query", "params"]
+        },
+        {
+            "name": "tsdb_execute",
+            "description": "Execute non-SELECT SQL commands",
+            "parameters": ["command", "params"]
+        },
+        {
+            "name": "tsdb_create_hypertable",
+            "description": "Convert regular table to TimescaleDB hypertable",
+            "parameters": ["table_name", "time_column", "chunk_time_interval"]
+        },
+        {
+            "name": "tsdb_show_hypertables",
+            "description": "List all hypertables with metadata",
+            "parameters": []
+        },
+        {
+            "name": "tsdb_show_chunks",
+            "description": "Show chunks for specified hypertable",
+            "parameters": ["hypertable"]
+        },
+        {
+            "name": "tsdb_compression_stats",
+            "description": "View compression statistics for hypertables",
+            "parameters": ["hypertable"]
+        },
+        {
+            "name": "tsdb_add_compression",
+            "description": "Add compression policy to hypertable",
+            "parameters": ["hypertable", "compress_after"]
+        },
+        {
+            "name": "tsdb_continuous_aggregate",
+            "description": "Create continuous aggregate view",
+            "parameters": ["view_name", "query"]
+        },
+        {
+            "name": "tsdb_database_stats",
+            "description": "Get comprehensive database statistics",
+            "parameters": []
+        }
     ]
 
-@server.call_tool()
-async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-    """Execute a tool and return results"""
+    return {
+        "service": "timescaledb-http-service",
+        "tools": tools,
+        "total_tools": len(tools),
+        "timestamp": get_timestamp()
+    }
+
+# Tool Implementation Endpoints
+@app.post("/tools/tsdb_query", response_model=ToolResponse)
+async def tsdb_query(request: ToolRequest):
+    """Execute SELECT queries against TimescaleDB"""
+    request_id = generate_request_id()
+
     try:
-        if name == "tsdb_query":
-            query = arguments["query"]
-            results = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=json.dumps(results, indent=2, default=str)
-            )]
-        
-        elif name == "tsdb_execute":
-            command = arguments["command"]
-            result = await tsdb_server.execute_command(command)
-            return [TextContent(
-                type="text",
-                text=f"Command executed successfully: {result}"
-            )]
-        
-        elif name == "tsdb_create_hypertable":
-            table_name = arguments["table_name"]
-            time_column = arguments.get("time_column", "time")
-            chunk_interval = arguments.get("chunk_time_interval", "1 week")
-            
-            query = f"""
-            SELECT create_hypertable(
-                '{table_name}', 
-                '{time_column}',
-                chunk_time_interval => INTERVAL '{chunk_interval}',
-                if_not_exists => TRUE
-            );
-            """
-            result = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=f"Hypertable created/verified: {table_name} with {chunk_interval} chunks"
-            )]
-        
-        elif name == "tsdb_show_hypertables":
-            query = """
-            SELECT 
-                hypertable_schema,
-                hypertable_name,
-                owner,
-                num_dimensions,
-                num_chunks,
-                compression_enabled,
-                tablespace
-            FROM timescaledb_information.hypertables
-            ORDER BY hypertable_schema, hypertable_name;
-            """
-            results = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=json.dumps(results, indent=2, default=str)
-            )]
-        
-        elif name == "tsdb_show_chunks":
-            hypertable = arguments["hypertable"]
-            query = f"""
-            SELECT 
-                chunk_name,
-                chunk_schema,
-                primary_dimension,
-                range_start,
-                range_end,
-                is_compressed,
-                pg_size_pretty(total_bytes) as size
-            FROM timescaledb_information.chunks
-            WHERE hypertable_name = '{hypertable}'
-            ORDER BY range_start DESC;
-            """
-            results = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=json.dumps(results, indent=2, default=str)
-            )]
-        
-        elif name == "tsdb_compression_stats":
-            hypertable = arguments.get("hypertable")
-            where_clause = f"WHERE hypertable_name = '{hypertable}'" if hypertable else ""
-            query = f"""
-            SELECT 
-                hypertable_name,
-                chunk_name,
-                pg_size_pretty(before_compression_total_bytes) as before_size,
-                pg_size_pretty(after_compression_total_bytes) as after_size,
-                ROUND(compression_ratio, 2) as compression_ratio
-            FROM timescaledb_information.compression_stats
-            {where_clause}
-            ORDER BY hypertable_name, chunk_name;
-            """
-            results = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=json.dumps(results, indent=2, default=str)
-            )]
-        
-        elif name == "tsdb_add_compression":
-            hypertable = arguments["hypertable"]
-            compress_after = arguments.get("compress_after", "7 days")
-            
-            # First enable compression
-            enable_query = f"ALTER TABLE {hypertable} SET (timescaledb.compress = true);"
-            await tsdb_server.execute_command(enable_query)
-            
-            # Then add compression policy
-            policy_query = f"SELECT add_compression_policy('{hypertable}', INTERVAL '{compress_after}');"
-            result = await tsdb_server.execute_query(policy_query)
-            
-            return [TextContent(
-                type="text",
-                text=f"Compression enabled for {hypertable}, will compress chunks older than {compress_after}"
-            )]
-        
-        elif name == "tsdb_continuous_aggregate":
-            view_name = arguments["view_name"]
-            query = arguments["query"]
-            
-            create_query = f"""
-            CREATE MATERIALIZED VIEW {view_name}
-            WITH (timescaledb.continuous) AS
-            {query}
-            """
-            await tsdb_server.execute_command(create_query)
-            
-            return [TextContent(
-                type="text",
-                text=f"Continuous aggregate '{view_name}' created successfully"
-            )]
-        
-        elif name == "tsdb_time_bucket_query":
-            table = arguments["table"]
-            time_column = arguments.get("time_column", "time")
-            bucket_interval = arguments.get("bucket_interval", "1 hour")
-            aggregates = arguments["aggregates"]
-            group_by = arguments.get("group_by", [])
-            where = arguments.get("where", "")
-            
-            agg_str = ", ".join(aggregates)
-            group_str = ", ".join([str(i+2) for i in range(len(group_by))]) if group_by else ""
-            if group_str:
-                group_str = ", " + group_str
-            group_cols = ", ".join(group_by) if group_by else ""
-            if group_cols:
-                group_cols = ", " + group_cols
-            where_clause = f"WHERE {where}" if where else ""
-            
-            query = f"""
-            SELECT 
-                time_bucket('{bucket_interval}', {time_column}) AS bucket
-                {group_cols},
-                {agg_str}
-            FROM {table}
-            {where_clause}
-            GROUP BY 1{group_str}
-            ORDER BY 1 DESC
-            LIMIT 100;
-            """
-            
-            results = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=json.dumps(results, indent=2, default=str)
-            )]
-        
-        elif name == "tsdb_database_stats":
-            query = """
-            WITH db_size AS (
-                SELECT pg_database_size('timescale') as size
-            ),
-            hypertable_stats AS (
-                SELECT 
-                    COUNT(*) as num_hypertables,
-                    SUM(num_chunks) as total_chunks,
-                    SUM(CASE WHEN compression_enabled THEN 1 ELSE 0 END) as compressed_tables
-                FROM timescaledb_information.hypertables
-            ),
-            continuous_aggs AS (
-                SELECT COUNT(*) as num_continuous_aggs
-                FROM timescaledb_information.continuous_aggregates
-            )
-            SELECT 
-                pg_size_pretty(db_size.size) as database_size,
-                hypertable_stats.num_hypertables,
-                hypertable_stats.total_chunks,
-                hypertable_stats.compressed_tables,
-                continuous_aggs.num_continuous_aggs,
-                current_setting('server_version') as postgres_version,
-                (SELECT extversion FROM pg_extension WHERE extname = 'timescaledb') as timescaledb_version
-            FROM db_size, hypertable_stats, continuous_aggs;
-            """
-            results = await tsdb_server.execute_query(query)
-            return [TextContent(
-                type="text",
-                text=json.dumps(results[0] if results else {}, indent=2, default=str)
-            )]
-        
-        else:
-            return [TextContent(
-                type="text",
-                text=f"Unknown tool: {name}"
-            )]
-            
+        query = request.input.get("query")
+        params = request.input.get("params", [])
+
+        if not query:
+            raise HTTPException(status_code=400, detail="Query parameter is required")
+
+        if not query.strip().upper().startswith("SELECT"):
+            raise HTTPException(status_code=400, detail="Only SELECT queries are allowed")
+
+        start_time = time.time()
+        rows = await db_manager.execute_query(query, params)
+        execution_time = (time.time() - start_time) * 1000
+
+        result = {
+            "success": True,
+            "rows": rows,
+            "row_count": len(rows),
+            "execution_time_ms": round(execution_time, 2),
+            "query": query[:100] + "..." if len(query) > 100 else query
+        }
+
+        return create_response("tsdb_query", result, request_id)
+
+    except HTTPException:
+        raise
     except Exception as e:
-        return [TextContent(
-            type="text",
-            text=f"Error executing {name}: {str(e)}"
-        )]
+        logger.error(f"tsdb_query failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Query execution failed: {str(e)}")
 
-@server.list_resources()
-async def list_resources() -> List[Resource]:
-    """List available resources"""
-    return [
-        Resource(
-            uri="tsdb://hypertables",
-            name="Hypertables",
-            description="List of all hypertables in TimescaleDB"
-        ),
-        Resource(
-            uri="tsdb://stats",
-            name="Database Statistics",
-            description="TimescaleDB database statistics and metrics"
-        )
-    ]
+@app.post("/tools/tsdb_execute", response_model=ToolResponse)
+async def tsdb_execute(request: ToolRequest):
+    """Execute non-SELECT SQL commands"""
+    request_id = generate_request_id()
 
-@server.read_resource()
-async def read_resource(uri: str) -> str:
-    """Get resource content"""
-    if uri == "tsdb://hypertables":
+    try:
+        command = request.input.get("command")
+        params = request.input.get("params", [])
+
+        if not command:
+            raise HTTPException(status_code=400, detail="Command parameter is required")
+
+        # Block dangerous commands
+        dangerous_keywords = ["DROP DATABASE", "DROP USER", "DELETE FROM pg_", "TRUNCATE pg_"]
+        command_upper = command.upper()
+        for keyword in dangerous_keywords:
+            if keyword in command_upper:
+                raise HTTPException(status_code=403, detail=f"Command contains forbidden keyword: {keyword}")
+
+        start_time = time.time()
+        result_status = await db_manager.execute_command(command, params)
+        execution_time = (time.time() - start_time) * 1000
+
+        result = {
+            "success": True,
+            "status": result_status,
+            "execution_time_ms": round(execution_time, 2),
+            "command": command[:100] + "..." if len(command) > 100 else command
+        }
+
+        return create_response("tsdb_execute", result, request_id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"tsdb_execute failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Command execution failed: {str(e)}")
+
+@app.post("/tools/tsdb_show_hypertables", response_model=ToolResponse)
+async def tsdb_show_hypertables(request: ToolRequest):
+    """List all hypertables with metadata"""
+    request_id = generate_request_id()
+
+    try:
         query = """
-        SELECT 
+        SELECT
             hypertable_schema,
             hypertable_name,
             owner,
             num_dimensions,
             num_chunks,
-            compression_enabled
+            compression_enabled,
+            tablespaces,
+            primary_dimension,
+            primary_dimension_type
         FROM timescaledb_information.hypertables
         ORDER BY hypertable_schema, hypertable_name;
         """
-        results = await tsdb_server.execute_query(query)
-        return json.dumps(results, indent=2, default=str)
-    
-    elif uri == "tsdb://stats":
-        query = """
-        SELECT 
-            pg_size_pretty(pg_database_size('timescale')) as database_size,
-            (SELECT COUNT(*) FROM timescaledb_information.hypertables) as hypertables,
-            (SELECT SUM(num_chunks) FROM timescaledb_information.hypertables) as total_chunks,
-            (SELECT extversion FROM pg_extension WHERE extname = 'timescaledb') as version
-        """
-        results = await tsdb_server.execute_query(query)
-        return json.dumps(results[0] if results else {}, indent=2, default=str)
-    
-    else:
-        return f"Unknown resource: {uri}"
 
-async def main():
-    """Main entry point"""
-    # Initialize database connection
-    await tsdb_server.initialize()
-    
+        rows = await db_manager.execute_query(query)
+
+        result = {
+            "success": True,
+            "hypertables": rows,
+            "total_count": len(rows)
+        }
+
+        return create_response("tsdb_show_hypertables", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_show_hypertables failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list hypertables: {str(e)}")
+
+@app.post("/tools/tsdb_create_hypertable", response_model=ToolResponse)
+async def tsdb_create_hypertable(request: ToolRequest):
+    """Convert regular table to TimescaleDB hypertable"""
+    request_id = generate_request_id()
+
     try:
-        # Import required types
-        from mcp.server import InitializationOptions
-        from mcp.types import ServerCapabilities
-        
-        # Create initialization options
-        init_options = InitializationOptions(
-            server_name="mcp-timescaledb",
-            server_version="1.0.0",
-            capabilities=ServerCapabilities(
-                tools={},  # Tools are handled by decorators
-                resources={} # Resources are handled by decorators
-            )
-        )
-        
-        # Run the MCP server
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream, 
-                write_stream,
-                initialization_options=init_options
-            )
-    finally:
-        # Cleanup
-        await tsdb_server.cleanup()
+        table_name = request.input.get("table_name")
+        time_column = request.input.get("time_column", "time")
+        chunk_time_interval = request.input.get("chunk_time_interval", "1 week")
 
+        if not table_name:
+            raise HTTPException(status_code=400, detail="table_name parameter is required")
+
+        # Create hypertable
+        command = f"SELECT create_hypertable('{table_name}', '{time_column}', chunk_time_interval => interval '{chunk_time_interval}');"
+
+        await db_manager.execute_command(command)
+
+        result = {
+            "success": True,
+            "message": f"Successfully created hypertable {table_name}",
+            "table_name": table_name,
+            "time_column": time_column,
+            "chunk_time_interval": chunk_time_interval
+        }
+
+        return create_response("tsdb_create_hypertable", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_create_hypertable failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create hypertable: {str(e)}")
+
+@app.post("/tools/tsdb_show_chunks", response_model=ToolResponse)
+async def tsdb_show_chunks(request: ToolRequest):
+    """Show chunks for specified hypertable"""
+    request_id = generate_request_id()
+
+    try:
+        hypertable = request.input.get("hypertable")
+
+        if not hypertable:
+            raise HTTPException(status_code=400, detail="hypertable parameter is required")
+
+        query = """
+        SELECT
+            chunk_schema,
+            chunk_name,
+            table_name,
+            primary_dimension,
+            primary_dimension_type,
+            range_start,
+            range_end,
+            range_start_integer,
+            range_end_integer,
+            is_compressed,
+            chunk_table_size,
+            index_size,
+            toast_size,
+            total_size
+        FROM timescaledb_information.chunks
+        WHERE hypertable_name = $1
+        ORDER BY range_start;
+        """
+
+        rows = await db_manager.execute_query(query, [hypertable])
+
+        result = {
+            "success": True,
+            "hypertable": hypertable,
+            "chunks": rows,
+            "total_chunks": len(rows)
+        }
+
+        return create_response("tsdb_show_chunks", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_show_chunks failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to show chunks: {str(e)}")
+
+@app.post("/tools/tsdb_compression_stats", response_model=ToolResponse)
+async def tsdb_compression_stats(request: ToolRequest):
+    """View compression statistics for hypertables"""
+    request_id = generate_request_id()
+
+    try:
+        hypertable = request.input.get("hypertable")
+
+        if hypertable:
+            # Stats for specific hypertable
+            query = """
+            SELECT
+                hypertable_name,
+                before_compression_table_bytes,
+                before_compression_index_bytes,
+                before_compression_toast_bytes,
+                before_compression_total_bytes,
+                after_compression_table_bytes,
+                after_compression_index_bytes,
+                after_compression_toast_bytes,
+                after_compression_total_bytes,
+                compression_ratio
+            FROM timescaledb_information.compressed_hypertable_stats
+            WHERE hypertable_name = $1;
+            """
+            rows = await db_manager.execute_query(query, [hypertable])
+        else:
+            # Stats for all hypertables
+            query = """
+            SELECT
+                hypertable_name,
+                before_compression_table_bytes,
+                before_compression_index_bytes,
+                before_compression_toast_bytes,
+                before_compression_total_bytes,
+                after_compression_table_bytes,
+                after_compression_index_bytes,
+                after_compression_toast_bytes,
+                after_compression_total_bytes,
+                compression_ratio
+            FROM timescaledb_information.compressed_hypertable_stats
+            ORDER BY hypertable_name;
+            """
+            rows = await db_manager.execute_query(query)
+
+        result = {
+            "success": True,
+            "compression_stats": rows,
+            "total_hypertables": len(rows),
+            "filter": hypertable if hypertable else "all"
+        }
+
+        return create_response("tsdb_compression_stats", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_compression_stats failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get compression stats: {str(e)}")
+
+@app.post("/tools/tsdb_add_compression", response_model=ToolResponse)
+async def tsdb_add_compression(request: ToolRequest):
+    """Add compression policy to hypertable"""
+    request_id = generate_request_id()
+
+    try:
+        hypertable = request.input.get("hypertable")
+        compress_after = request.input.get("compress_after", "7 days")
+
+        if not hypertable:
+            raise HTTPException(status_code=400, detail="hypertable parameter is required")
+
+        # Add compression policy
+        command = f"SELECT add_compression_policy('{hypertable}', compress_after => interval '{compress_after}');"
+
+        await db_manager.execute_command(command)
+
+        result = {
+            "success": True,
+            "message": f"Successfully added compression policy to {hypertable}",
+            "hypertable": hypertable,
+            "compress_after": compress_after
+        }
+
+        return create_response("tsdb_add_compression", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_add_compression failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add compression policy: {str(e)}")
+
+@app.post("/tools/tsdb_continuous_aggregate", response_model=ToolResponse)
+async def tsdb_continuous_aggregate(request: ToolRequest):
+    """Create continuous aggregate view"""
+    request_id = generate_request_id()
+
+    try:
+        view_name = request.input.get("view_name")
+        query = request.input.get("query")
+
+        if not view_name or not query:
+            raise HTTPException(status_code=400, detail="view_name and query parameters are required")
+
+        # Create continuous aggregate
+        command = f"""
+        CREATE MATERIALIZED VIEW {view_name}
+        WITH (timescaledb.continuous) AS
+        {query};
+        """
+
+        await db_manager.execute_command(command)
+
+        result = {
+            "success": True,
+            "message": f"Successfully created continuous aggregate view {view_name}",
+            "view_name": view_name,
+            "query": query
+        }
+
+        return create_response("tsdb_continuous_aggregate", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_continuous_aggregate failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create continuous aggregate: {str(e)}")
+
+@app.post("/tools/tsdb_database_stats", response_model=ToolResponse)
+async def tsdb_database_stats(request: ToolRequest):
+    """Get comprehensive database statistics"""
+    request_id = generate_request_id()
+
+    try:
+        # Get database size
+        db_size_query = "SELECT pg_size_pretty(pg_database_size(current_database())) as database_size;"
+        db_size = await db_manager.execute_query(db_size_query)
+
+        # Get table count
+        table_count_query = "SELECT count(*) as table_count FROM information_schema.tables WHERE table_schema = 'public';"
+        table_count = await db_manager.execute_query(table_count_query)
+
+        # Get hypertable count
+        hypertable_count_query = "SELECT count(*) as hypertable_count FROM timescaledb_information.hypertables;"
+        hypertable_count = await db_manager.execute_query(hypertable_count_query)
+
+        # Get version
+        version_query = "SELECT version() as version;"
+        version = await db_manager.execute_query(version_query)
+
+        # Get TimescaleDB version
+        tsdb_version_query = "SELECT extversion as timescaledb_version FROM pg_extension WHERE extname = 'timescaledb';"
+        tsdb_version = await db_manager.execute_query(tsdb_version_query)
+
+        result = {
+            "success": True,
+            "database_size": db_size[0]["database_size"] if db_size else "unknown",
+            "table_count": table_count[0]["table_count"] if table_count else 0,
+            "hypertable_count": hypertable_count[0]["hypertable_count"] if hypertable_count else 0,
+            "postgresql_version": version[0]["version"][:50] + "..." if version else "unknown",
+            "timescaledb_version": tsdb_version[0]["timescaledb_version"] if tsdb_version else "unknown",
+            "connection_pool": db_manager.get_pool_stats()
+        }
+
+        return create_response("tsdb_database_stats", result, request_id)
+
+    except Exception as e:
+        logger.error(f"tsdb_database_stats failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get database stats: {str(e)}")
+
+# Error Handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "tool": "error",
+            "result": {"error": exc.detail, "status_code": exc.status_code},
+            "requestId": generate_request_id(),
+            "timestamp": get_timestamp(),
+            "status": "error"
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "tool": "error",
+            "result": {"error": "Internal server error", "details": str(exc)},
+            "requestId": generate_request_id(),
+            "timestamp": get_timestamp(),
+            "status": "error"
+        }
+    )
+
+# Main entry point
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=8080,
+        log_level="info",
+        access_log=True
+    )
