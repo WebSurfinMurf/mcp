@@ -1,18 +1,20 @@
 # MCP Tool Implementation Guide
 
 **Complete Guide for Implementing Model Context Protocol (MCP) Tools**
-*Based on Successful Implementation of 25+ Tools Including TimescaleDB, Playwright, and n8n Integration*
+*Based on Successful Implementation of 31 Tools Including TimescaleDB, Playwright, and n8n Integration*
 
 ---
 
 ## 🎯 Executive Summary
 
-This guide documents the complete process for implementing MCP tools in the ai-servicers.com infrastructure, based on successful implementation of 25+ tools across 8 categories. The guide covers both HTTP-native microservice patterns and orchestrator integration patterns proven to work in production.
+This guide documents the complete process for implementing MCP tools in the ai-servicers.com infrastructure, based on successful implementation of 31 tools across 8 categories. The guide covers both HTTP-native microservice patterns and orchestrator integration patterns proven to work in production.
+
+**LATEST UPDATE (2025-09-15)**: Directory structure consolidated - removed legacy stdio implementations and standardized on HTTP-native services in primary directories (`projects/mcp/playwright/`, `projects/mcp/timescaledb/`).
 
 ### **Key Achievements Referenced**:
 - ✅ **TimescaleDB HTTP-Native Service**: Eliminated infinite restart loops with stable HTTP service
 - ✅ **Custom Playwright Service**: Expert-recommended HTTP implementation replacing Microsoft's stdio
-- ✅ **Orchestrator Pattern**: 25+ tools via centralized coordinator with distributed microservices
+- ✅ **Orchestrator Pattern**: 31 tools via centralized coordinator with distributed microservices
 - ✅ **Production Stability**: All services running continuously without restart issues
 
 ---
@@ -20,15 +22,16 @@ This guide documents the complete process for implementing MCP tools in the ai-s
 ## 📋 Table of Contents
 
 1. [Architecture Patterns](#architecture-patterns)
-2. [HTTP-Native Service Implementation](#http-native-service-implementation)
-3. [MCP Orchestrator Integration](#mcp-orchestrator-integration)
-4. [Tool Discovery and Registration](#tool-discovery-and-registration)
-5. [Container Deployment](#container-deployment)
-6. [Error Handling and Debugging](#error-handling-and-debugging)
-7. [Testing and Validation](#testing-and-validation)
-8. [Security and Best Practices](#security-and-best-practices)
-9. [Troubleshooting Guide](#troubleshooting-guide)
-10. [Common Patterns and Examples](#common-patterns-and-examples)
+2. [Directory Structure Standards](#directory-structure-standards)
+3. [HTTP-Native Service Implementation](#http-native-service-implementation)
+4. [MCP Orchestrator Integration](#mcp-orchestrator-integration)
+5. [Tool Discovery and Registration](#tool-discovery-and-registration)
+6. [Container Deployment](#container-deployment)
+7. [Error Handling and Debugging](#error-handling-and-debugging)
+8. [Testing and Validation](#testing-and-validation)
+9. [Security and Best Practices](#security-and-best-practices)
+10. [Troubleshooting Guide](#troubleshooting-guide)
+11. [Common Patterns and Examples](#common-patterns-and-examples)
 
 ---
 
@@ -51,7 +54,7 @@ This guide documents the complete process for implementing MCP tools in the ai-s
 Claude Code → MCP Orchestrator → HTTP Request → Service HTTP API → Business Logic
 ```
 
-**Successful Examples**: TimescaleDB, Playwright
+**Successful Examples**: TimescaleDB (`/projects/mcp/timescaledb/`), Playwright (`/projects/mcp/playwright/`)
 
 #### 2. **Direct Tool Integration Pattern**
 **Best for**: Simple operations, existing Python libraries, quick implementations
@@ -85,13 +88,44 @@ Claude Code → MCP Orchestrator → HTTP/JSON-RPC → External MCP Service
 
 ---
 
+## 📁 Directory Structure Standards
+
+### **Consolidated Directory Structure (2025-09-15)**
+
+**Standard Pattern**: Use primary directory names for all services
+```bash
+/home/administrator/projects/mcp/
+├── playwright/                 # ✅ Browser automation (consolidated from playwright-http-service)
+├── timescaledb/               # ✅ Time-series database (consolidated from timescaledb-http-service)
+├── postgres/                  # Database operations service
+├── fetch/                     # Web content fetching service
+├── filesystem/                # File operations service
+├── monitoring/                # System monitoring service
+├── n8n/                      # Workflow automation service
+└── server/                   # MCP orchestrator (31 tools)
+```
+
+### **Naming Conventions**:
+- ✅ **Container Names**: `mcp-{service}` (e.g., `mcp-playwright`, `mcp-timescaledb`)
+- ✅ **Image Names**: `mcp-{service}:latest`
+- ✅ **Directory Names**: Primary service name (no suffixes)
+- ✅ **Endpoint URLs**: `http://mcp-{service}:8080`
+
+### **Legacy Cleanup Complete**:
+- ❌ Removed `playwright-http-service/` (consolidated to `playwright/`)
+- ❌ Removed `timescaledb-http-service/` (consolidated to `timescaledb/`)
+- ❌ Removed all stdio implementations (eliminated restart loops)
+- ✅ All references updated to new structure
+
+---
+
 ## 🚀 HTTP-Native Service Implementation
 
 ### **Step 1: Service Structure**
 
-Create the service directory:
+Create the service directory (use primary directory name for standardization):
 ```bash
-/home/administrator/projects/mcp/{service-name}-http-service/
+/home/administrator/projects/mcp/{service-name}/
 ├── server.py                    # Main FastAPI HTTP server
 ├── database.py                  # Connection/business logic (if needed)
 ├── models.py                    # Request/response data models
@@ -101,6 +135,8 @@ Create the service directory:
 ├── CLAUDE.md                    # Service documentation
 └── README.md                    # Quick start guide
 ```
+
+**Note**: Use primary directory names (e.g., `playwright/`, `timescaledb/`) rather than `-http-service` suffixes. Legacy stdio implementations have been removed and consolidated.
 
 ### **Step 2: FastAPI Server Template**
 
@@ -375,6 +411,7 @@ fastapi>=0.110.0
 uvicorn>=0.30.0
 pydantic>=2.8.0
 httpx>=0.27.0
+requests>=2.31.0  # Required for health checks
 # Add service-specific dependencies
 asyncpg>=0.28.0  # For database services
 aiofiles>=23.0.0  # For file operations
@@ -407,7 +444,7 @@ def service_example_tool(param1: str, param2: str = None) -> str:
             return "Error: param1 is required"
 
         # Get service endpoint from environment
-        endpoint = os.getenv("MCP_{SERVICE}_ENDPOINT", "http://mcp-{service}-http:8080")
+        endpoint = os.getenv("MCP_{SERVICE}_ENDPOINT", "http://mcp-{service}:8080")
 
         # Make HTTP request to service
         with httpx.Client() as client:
@@ -492,7 +529,7 @@ def _get_tool_category(tool_name: str) -> str:
 
 ```bash
 # {Service} HTTP Service Configuration
-MCP_{SERVICE}_ENDPOINT=http://mcp-{service}-http:8080
+MCP_{SERVICE}_ENDPOINT=http://mcp-{service}:8080
 {SERVICE}_HOST={database_host}
 {SERVICE}_PORT={database_port}
 {SERVICE}_DATABASE={database_name}
@@ -512,12 +549,12 @@ MCP_{SERVICE}_ENDPOINT=http://mcp-{service}-http:8080
 services:
   # ... existing services ...
 
-  mcp-{service}-http:
+  mcp-{service}:
     build:
-      context: ../{service}-http-service
+      context: ../{service}
       dockerfile: Dockerfile
-    image: {service}-http-service:latest
-    container_name: mcp-{service}-http
+    image: mcp-{service}:latest
+    container_name: mcp-{service}
     restart: unless-stopped
     environment:
       - {SERVICE}_HOST=${SERVICE_HOST}
@@ -553,7 +590,7 @@ cd /home/administrator/projects/mcp/server
 set -a && source /home/administrator/secrets/mcp-server.env && set +a
 
 # Build and deploy new service
-docker compose -f docker-compose.microservices.yml up -d mcp-{service}-http
+docker compose -f docker-compose.microservices.yml up -d mcp-{service}
 
 # Restart main orchestrator to register new tools
 docker compose -f docker-compose.microservices.yml restart mcp-server
@@ -671,7 +708,7 @@ curl http://localhost:8080/tools
 curl http://localhost:8000/tools | jq '.count, .categories'
 
 # Test Claude Code bridge
-curl http://localhost:8001/tools | jq '.categories["{service-category}"]'
+curl http://mcp.linuxserver.lan:8001/tools | jq '.categories["{service-category}"]'
 ```
 
 ### **Step 3: Tool Execution Testing**
@@ -688,7 +725,7 @@ curl -X POST http://localhost:8000/tools/service_example_tool \
   -d '{"input": {"param1": "test_value"}}'
 
 # Claude Code bridge test
-curl -X POST http://localhost:8001/tools/service_example_tool \
+curl -X POST http://mcp.linuxserver.lan:8001/tools/service_example_tool \
   -H "Content-Type: application/json" \
   -d '{"input": {"param1": "test_value"}}'
 ```
@@ -703,7 +740,7 @@ docker ps --filter name=mcp-{service}
 watch -n 5 'docker ps --filter name=mcp-{service} --format "table {{.Names}}\t{{.Status}}"'
 
 # Check resource usage
-docker stats mcp-{service}-http --no-stream
+docker stats mcp-{service} --no-stream
 ```
 
 ---
@@ -753,12 +790,14 @@ docker stats mcp-{service}-http --no-stream
 2. ❌ **Import errors** in Python code
 3. ❌ **Database connection failures**
 4. ❌ **Missing environment variables**
+5. ❌ **Missing dependencies** (e.g., `requests` for health checks)
 
 **Solutions**:
-1. ✅ **Check logs**: `docker logs mcp-{service}-http --tail 50`
+1. ✅ **Check logs**: `docker logs mcp-{service} --tail 50`
 2. ✅ **Single initialization message**: Ensure only one startup log per service
 3. ✅ **Connection pooling**: Use proper async connection management
 4. ✅ **Error handling**: Graceful fallback for connection failures
+5. ✅ **Dependencies**: Ensure all required packages in requirements.txt
 
 ### **Tool Discovery Issues**
 
@@ -879,7 +918,7 @@ def n8n_list_workflows() -> str:
 3. ✅ **Response Times**: < 500ms for simple operations
 4. ✅ **Error Handling**: Graceful error responses with proper HTTP status codes
 5. ✅ **Resource Usage**: Reasonable memory/CPU consumption
-6. ✅ **Bridge Access**: Tools accessible via localhost:8001 for Claude Code
+6. ✅ **Bridge Access**: Tools accessible via `http://mcp.linuxserver.lan:8001` for Claude Code
 
 ### **Production Readiness Checklist**
 
@@ -896,7 +935,7 @@ def n8n_list_workflows() -> str:
 
 ## 🎯 Conclusion
 
-This guide represents battle-tested patterns from successfully implementing 25+ MCP tools in production. The HTTP-native microservice pattern with orchestrator integration has proven superior to stdio-based approaches, eliminating restart loops and providing robust, scalable tool implementations.
+This guide represents battle-tested patterns from successfully implementing 31 MCP tools in production. The HTTP-native microservice pattern with orchestrator integration has proven superior to stdio-based approaches, eliminating restart loops and providing robust, scalable tool implementations.
 
 ### **Key Takeaways**:
 
@@ -906,6 +945,7 @@ This guide represents battle-tested patterns from successfully implementing 25+ 
 4. ✅ **Single initialization logging** prevents restart loops
 5. ✅ **Comprehensive error handling** improves reliability
 6. ✅ **Orchestrator pattern** enables best-in-class service integration
+7. ✅ **Directory consolidation** simplifies maintenance and standardizes naming
 
 ### **Next Steps**:
 
@@ -917,7 +957,7 @@ This guide represents battle-tested patterns from successfully implementing 25+ 
 
 ---
 
-**Status**: Production-validated guide based on 25+ tool implementation
-**Last Updated**: 2025-09-15
+**Status**: Production-validated guide based on 31 tool implementation
+**Last Updated**: 2025-09-15 (Directory consolidation complete)
 **Success Rate**: 100% for services following this guide
 **Expert Validation**: Patterns confirmed by infrastructure specialists

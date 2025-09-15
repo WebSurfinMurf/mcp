@@ -1031,7 +1031,7 @@ def tsdb_query(query: str) -> str:
         if not query.strip().upper().startswith("SELECT"):
             return "Error: Only SELECT queries are allowed for security"
 
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1072,7 +1072,7 @@ def tsdb_database_stats() -> str:
     logger.info("Orchestrating TimescaleDB database stats")
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1111,7 +1111,7 @@ def tsdb_show_hypertables() -> str:
     logger.info("Orchestrating TimescaleDB show hypertables")
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1153,7 +1153,7 @@ def tsdb_execute(command: str) -> str:
         if any(dangerous in command_upper for dangerous in dangerous_commands):
             return f"Error: Dangerous command blocked for security: {command_upper[:50]}..."
 
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1186,7 +1186,7 @@ def tsdb_create_hypertable(table_name: str, time_column: str, chunk_time_interva
     })
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1219,7 +1219,7 @@ def tsdb_show_chunks(hypertable: str) -> str:
     logger.info("Orchestrating TimescaleDB show chunks", extra={'hypertable': hypertable})
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1255,7 +1255,7 @@ def tsdb_compression_stats(hypertable: str = None) -> str:
     logger.info("Orchestrating TimescaleDB compression stats", extra={'hypertable': hypertable})
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1291,7 +1291,7 @@ def tsdb_add_compression(hypertable: str, compress_after: str) -> str:
     })
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
@@ -1325,7 +1325,7 @@ def tsdb_continuous_aggregate(view_name: str, query: str) -> str:
     })
 
     try:
-        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb:8080")
 
         with httpx.Client() as client:
             response = client.post(
