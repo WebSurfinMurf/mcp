@@ -20,7 +20,7 @@ services:
       # MCP microservice endpoints
       - MCP_N8N_ENDPOINT=http://mcp-n8n:3000
       - MCP_PLAYWRIGHT_ENDPOINT=http://mcp-playwright:8080
-      - MCP_TIMESCALEDB_ENDPOINT=http://mcp-timescaledb:8081
+      - MCP_TIMESCALEDB_ENDPOINT=http://mcp-timescaledb-http:8080
     networks:
       - traefik-proxy
       - postgres-net
@@ -163,28 +163,55 @@ services:
           memory: 1G
           cpus: '1'
 
-  # TimescaleDB MCP Service (enhanced existing implementation)
-  mcp-timescaledb:
-    build:
-      context: /home/administrator/projects/mcp/timescaledb
-      dockerfile: Dockerfile
-    container_name: mcp-timescaledb
+  # TimescaleDB HTTP-Native MCP Service (converted from problematic stdio implementation)
+  mcp-timescaledb-http:
+    image: timescaledb-http-service:latest
+    container_name: mcp-timescaledb-http
     restart: unless-stopped
     networks:
       - mcp-internal
       - postgres-net  # Access to TimescaleDB
       - observability-net  # Access to TimescaleDB
     environment:
-      # TimescaleDB connection
+      # TimescaleDB connection (internal Docker hostname)
       TSDB_HOST: timescaledb
       TSDB_PORT: 5432
       TSDB_DATABASE: timescale
       TSDB_USER: tsdbadmin
       TSDB_PASSWORD: ${TIMESCALEDB_PASSWORD}
 
-      # MCP settings
-      MCP_MODE: stdio  # Our implementation uses stdio
+      # Service settings
       LOG_LEVEL: info
+      PORT: 8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # OLD TimescaleDB stdio service (problematic - restart loop)
+  # Kept temporarily for rollback purposes - can be removed after HTTP service proven stable
+  mcp-timescaledb:
+    build:
+      context: /home/administrator/projects/mcp/timescaledb
+      dockerfile: Dockerfile
+    container_name: mcp-timescaledb-stdio
+    restart: unless-stopped
+    networks:
+      - mcp-internal
+      - postgres-net
+      - observability-net
+    environment:
+      TSDB_HOST: timescaledb
+      TSDB_PORT: 5432
+      TSDB_DATABASE: timescale
+      TSDB_USER: tsdbadmin
+      TSDB_PASSWORD: ${TIMESCALEDB_PASSWORD}
+      MCP_MODE: stdio
+      LOG_LEVEL: info
+    profiles:
+      - rollback  # Only start with --profile rollback
     healthcheck:
       test: ["CMD", "python", "-c", "import psycopg2; psycopg2.connect('postgresql://tsdbadmin:${TIMESCALEDB_PASSWORD}@timescaledb:5432/timescale').close()"]
       interval: 30s

@@ -885,44 +885,7 @@ def playwright_wait_for_selector(selector: str, timeout: int = 30000, state: str
 
 # ====== LANGCHAIN AGENT SETUP ======
 
-# Collect all tools
-tools = [
-    # PostgreSQL tools (Modern Implementation)
-    postgres_query,
-    postgres_list_databases,
-    postgres_list_tables,
-    postgres_server_info,
-    postgres_database_sizes,
-
-    # MinIO S3 tools
-    minio_list_objects,
-    minio_get_object,
-
-    # Monitoring tools
-    search_logs,
-    get_system_metrics,
-
-    # Web fetch tools
-    fetch_web_content,
-
-    # Filesystem tools
-    read_file,
-    list_directory,
-
-    # n8n MCP Orchestrator tools
-    n8n_list_workflows,
-    n8n_get_workflow,
-    n8n_get_database_statistics,
-
-    # Playwright MCP Orchestrator tools (Custom HTTP Service)
-    playwright_navigate,
-    playwright_screenshot,
-    playwright_click,
-    playwright_fill,
-    playwright_get_content,
-    playwright_evaluate,
-    playwright_wait_for_selector
-]
+# Tools list will be defined after all tool definitions
 
 # LiteLLM client with configurable model
 llm = ChatLiteLLM(
@@ -958,18 +921,7 @@ Security reminders:
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
-# Create agent
-agent = create_openai_functions_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True,
-    max_iterations=5
-)
-
-# Add agent endpoint
-add_routes(app, agent_executor, path="/agent")
+# Agent creation will be moved after tools definition
 
 # ====== DIRECT TOOL API ======
 
@@ -1053,6 +1005,8 @@ def _get_tool_category(tool_name: str) -> str:
         return "browser-automation"
     elif tool_name.startswith("n8n_"):
         return "workflow-automation"
+    elif tool_name.startswith("tsdb_"):
+        return "time-series-database"
     else:
         return "misc"
 
@@ -1065,6 +1019,404 @@ def _get_tool_categories() -> Dict[str, List[str]]:
             categories[category] = []
         categories[category].append(tool.name)
     return categories
+
+# ====== TIMESCALEDB HTTP ORCHESTRATOR TOOLS ======
+
+@tool
+def tsdb_query(query: str) -> str:
+    """Execute SELECT queries against TimescaleDB via HTTP service"""
+    logger.info("Orchestrating TimescaleDB query", extra={'query_length': len(query)})
+
+    try:
+        if not query.strip().upper().startswith("SELECT"):
+            return "Error: Only SELECT queries are allowed for security"
+
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_query",
+                json={'input': {'query': query}},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB query successful", extra={
+                    'rows': tool_result.get('row_count', 0),
+                    'execution_time': tool_result.get('execution_time_ms', 0)
+                })
+
+                rows = tool_result.get('rows', [])
+                if not rows:
+                    return "Query executed successfully but returned no rows."
+
+                # Format results as a readable table
+                if len(rows) == 1:
+                    return f"Query returned 1 row:\n{json.dumps(rows[0], indent=2)}"
+                else:
+                    return f"Query returned {len(rows)} rows:\n{json.dumps(rows, indent=2)}"
+            else:
+                logger.error("TimescaleDB query failed", extra={'error': result.get('error')})
+                return f"Query failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB query orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_database_stats() -> str:
+    """Get comprehensive TimescaleDB database statistics via HTTP service"""
+    logger.info("Orchestrating TimescaleDB database stats")
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_database_stats",
+                json={'input': {}},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB database stats successful")
+
+                stats = {
+                    "Database Size": tool_result.get('database_size', 'unknown'),
+                    "Table Count": tool_result.get('table_count', 0),
+                    "Hypertable Count": tool_result.get('hypertable_count', 0),
+                    "PostgreSQL Version": tool_result.get('postgresql_version', 'unknown'),
+                    "TimescaleDB Version": tool_result.get('timescaledb_version', 'unknown'),
+                    "Connection Pool": tool_result.get('connection_pool', {})
+                }
+
+                return f"TimescaleDB Statistics:\n{json.dumps(stats, indent=2)}"
+            else:
+                logger.error("TimescaleDB database stats failed", extra={'error': result.get('error')})
+                return f"Database stats failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB database stats orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_show_hypertables() -> str:
+    """List all TimescaleDB hypertables with metadata via HTTP service"""
+    logger.info("Orchestrating TimescaleDB show hypertables")
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_show_hypertables",
+                json={'input': {}},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB show hypertables successful", extra={
+                    'hypertable_count': tool_result.get('total_count', 0)
+                })
+
+                hypertables = tool_result.get('hypertables', [])
+                if not hypertables:
+                    return "No hypertables found in the database."
+
+                return f"Found {len(hypertables)} hypertable(s):\n{json.dumps(hypertables, indent=2)}"
+            else:
+                logger.error("TimescaleDB show hypertables failed", extra={'error': result.get('error')})
+                return f"Show hypertables failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB show hypertables orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_execute(command: str) -> str:
+    """Execute non-SELECT SQL commands against TimescaleDB via HTTP service"""
+    logger.info("Orchestrating TimescaleDB execute command", extra={'command_length': len(command)})
+
+    try:
+        # Security check: Allow common DDL/DML operations but block dangerous ones
+        command_upper = command.strip().upper()
+        dangerous_commands = ['DROP DATABASE', 'DROP USER', 'TRUNCATE', 'DELETE FROM pg_']
+        if any(dangerous in command_upper for dangerous in dangerous_commands):
+            return f"Error: Dangerous command blocked for security: {command_upper[:50]}..."
+
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_execute",
+                json={'input': {'command': command}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB execute successful", extra={
+                    'execution_time': tool_result.get('execution_time_ms', 0)
+                })
+                return f"Command executed successfully: {tool_result.get('message', 'Operation completed')}"
+            else:
+                logger.error("TimescaleDB execute failed", extra={'error': result.get('error')})
+                return f"Command failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB execute orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_create_hypertable(table_name: str, time_column: str, chunk_time_interval: str = "1 day") -> str:
+    """Convert regular table to TimescaleDB hypertable via HTTP service"""
+    logger.info("Orchestrating TimescaleDB create hypertable", extra={
+        'table': table_name, 'time_column': time_column, 'interval': chunk_time_interval
+    })
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_create_hypertable",
+                json={'input': {
+                    'table_name': table_name,
+                    'time_column': time_column,
+                    'chunk_time_interval': chunk_time_interval
+                }},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB create hypertable successful", extra={'table': table_name})
+                return f"Hypertable created successfully: {tool_result.get('message', f'Table {table_name} converted to hypertable')}"
+            else:
+                logger.error("TimescaleDB create hypertable failed", extra={'error': result.get('error')})
+                return f"Create hypertable failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB create hypertable orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_show_chunks(hypertable: str) -> str:
+    """Show chunks for specified hypertable via HTTP service"""
+    logger.info("Orchestrating TimescaleDB show chunks", extra={'hypertable': hypertable})
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_show_chunks",
+                json={'input': {'hypertable': hypertable}},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                chunks = tool_result.get('chunks', [])
+                logger.info("TimescaleDB show chunks successful", extra={
+                    'hypertable': hypertable, 'chunk_count': len(chunks)
+                })
+
+                if not chunks:
+                    return f"No chunks found for hypertable '{hypertable}'"
+
+                return f"Found {len(chunks)} chunk(s) for hypertable '{hypertable}':\n{json.dumps(chunks, indent=2)}"
+            else:
+                logger.error("TimescaleDB show chunks failed", extra={'error': result.get('error')})
+                return f"Show chunks failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB show chunks orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_compression_stats(hypertable: str = None) -> str:
+    """View compression statistics for hypertables via HTTP service"""
+    logger.info("Orchestrating TimescaleDB compression stats", extra={'hypertable': hypertable})
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_compression_stats",
+                json={'input': {'hypertable': hypertable} if hypertable else {'input': {}}},
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB compression stats successful")
+
+                stats = tool_result.get('compression_stats', [])
+                if not stats:
+                    return "No compression statistics available"
+
+                return f"Compression Statistics:\n{json.dumps(stats, indent=2)}"
+            else:
+                logger.error("TimescaleDB compression stats failed", extra={'error': result.get('error')})
+                return f"Compression stats failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB compression stats orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_add_compression(hypertable: str, compress_after: str) -> str:
+    """Add compression policy to hypertable via HTTP service"""
+    logger.info("Orchestrating TimescaleDB add compression", extra={
+        'hypertable': hypertable, 'compress_after': compress_after
+    })
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_add_compression",
+                json={'input': {
+                    'hypertable': hypertable,
+                    'compress_after': compress_after
+                }},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB add compression successful", extra={'hypertable': hypertable})
+                return f"Compression policy added: {tool_result.get('message', f'Compression enabled for {hypertable}')}"
+            else:
+                logger.error("TimescaleDB add compression failed", extra={'error': result.get('error')})
+                return f"Add compression failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB add compression orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+@tool
+def tsdb_continuous_aggregate(view_name: str, query: str) -> str:
+    """Create continuous aggregate view via HTTP service"""
+    logger.info("Orchestrating TimescaleDB continuous aggregate", extra={
+        'view_name': view_name, 'query_length': len(query)
+    })
+
+    try:
+        endpoint = os.getenv("MCP_TIMESCALEDB_ENDPOINT", "http://mcp-timescaledb-http:8080")
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/tsdb_continuous_aggregate",
+                json={'input': {
+                    'view_name': view_name,
+                    'query': query
+                }},
+                timeout=90.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("TimescaleDB continuous aggregate successful", extra={'view_name': view_name})
+                return f"Continuous aggregate created: {tool_result.get('message', f'View {view_name} created successfully')}"
+            else:
+                logger.error("TimescaleDB continuous aggregate failed", extra={'error': result.get('error')})
+                return f"Continuous aggregate failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("TimescaleDB continuous aggregate orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"TimescaleDB orchestrator error: {str(e)}"
+
+# ====== COLLECT ALL TOOLS ======
+
+# Collect all tools - defined after all tool implementations
+tools = [
+    # PostgreSQL tools (Modern Implementation)
+    postgres_query,
+    postgres_list_databases,
+    postgres_list_tables,
+    postgres_server_info,
+    postgres_database_sizes,
+
+    # MinIO S3 tools
+    minio_list_objects,
+    minio_get_object,
+
+    # Monitoring tools
+    search_logs,
+    get_system_metrics,
+
+    # Web fetch tools
+    fetch_web_content,
+
+    # Filesystem tools
+    read_file,
+    list_directory,
+
+    # n8n MCP Orchestrator tools
+    n8n_list_workflows,
+    n8n_get_workflow,
+    n8n_get_database_statistics,
+
+    # Playwright MCP Orchestrator tools (Custom HTTP Service)
+    playwright_navigate,
+    playwright_screenshot,
+    playwright_click,
+    playwright_fill,
+    playwright_get_content,
+    playwright_evaluate,
+    playwright_wait_for_selector,
+
+    # TimescaleDB MCP Orchestrator tools (HTTP Service)
+    tsdb_query,
+    tsdb_database_stats,
+    tsdb_show_hypertables,
+    tsdb_execute,
+    tsdb_create_hypertable,
+    tsdb_show_chunks,
+    tsdb_compression_stats,
+    tsdb_add_compression,
+    tsdb_continuous_aggregate
+]
+
+# ====== AGENT CREATION ======
+
+# Create agent after tools are defined
+agent = create_openai_functions_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,
+    handle_parsing_errors=True,
+    max_iterations=5
+)
+
+# Add agent endpoint
+add_routes(app, agent_executor, path="/agent")
 
 # ====== APPLICATION STARTUP ======
 
