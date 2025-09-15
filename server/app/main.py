@@ -665,6 +665,224 @@ def n8n_get_database_statistics() -> str:
         logger.error("n8n database statistics failed", exc_info=True, extra={'error': str(e)})
         return f"n8n orchestrator error: {str(e)}"
 
+# ====== PLAYWRIGHT ORCHESTRATOR TOOLS ======
+
+@tool
+def playwright_navigate(url: str, wait_for_load: bool = True, timeout: int = 30000) -> str:
+    """Navigate to a URL using the custom Playwright service"""
+    logger.info("Orchestrating Playwright navigation", extra={'url': url, 'wait_for_load': wait_for_load})
+
+    # Security validation - domain restrictions
+    from urllib.parse import urlparse
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc.lower()
+
+    # Basic security check (can be enhanced with environment variables)
+    blocked_domains = ['localhost', '127.0.0.1', '0.0.0.0', 'internal']
+    if any(blocked in domain for blocked in blocked_domains):
+        logger.warning("Blocked domain access attempt", extra={'domain': domain, 'url': url})
+        return f"Error: Domain {domain} is not allowed by security policy"
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/navigate",
+                json={'input': {'url': url, 'wait_for_load': wait_for_load, 'timeout': timeout}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("Playwright navigation successful", extra={'url': tool_result.get('url'), 'title': tool_result.get('title')})
+                return f"Successfully navigated to: {tool_result.get('title', 'Untitled')} ({tool_result.get('url')})\nStatus: {tool_result.get('status')} {tool_result.get('statusText', '')}"
+            else:
+                logger.error("Playwright navigation failed", extra={'error': result.get('error'), 'url': url})
+                return f"Navigation failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright navigation orchestrator error", exc_info=True, extra={'error': str(e), 'url': url})
+        return f"Playwright orchestrator error: {str(e)}"
+
+@tool
+def playwright_screenshot(full_page: bool = False, format: str = "png") -> str:
+    """Take a screenshot of the current page using the custom Playwright service"""
+    logger.info("Orchestrating Playwright screenshot", extra={'full_page': full_page, 'format': format})
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/screenshot",
+                json={'input': {'full_page': full_page, 'format': format}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("Playwright screenshot successful", extra={'format': tool_result.get('format'), 'size': tool_result.get('size')})
+                return f"Screenshot captured successfully:\n- Format: {tool_result.get('format')}\n- Size: {tool_result.get('size'):,} bytes\n- Base64 data length: {len(tool_result.get('screenshot', ''))}"
+            else:
+                logger.error("Playwright screenshot failed", extra={'error': result.get('error')})
+                return f"Screenshot failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright screenshot orchestrator error", exc_info=True, extra={'error': str(e)})
+        return f"Playwright orchestrator error: {str(e)}"
+
+@tool
+def playwright_click(selector: str, timeout: int = 30000) -> str:
+    """Click an element on the page using the custom Playwright service"""
+    logger.info("Orchestrating Playwright click", extra={'selector': selector, 'timeout': timeout})
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/click",
+                json={'input': {'selector': selector, 'timeout': timeout}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("Playwright click successful", extra={'selector': selector})
+                return f"Successfully clicked element: {selector}"
+            else:
+                logger.error("Playwright click failed", extra={'error': result.get('error'), 'selector': selector})
+                return f"Click failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright click orchestrator error", exc_info=True, extra={'error': str(e), 'selector': selector})
+        return f"Playwright orchestrator error: {str(e)}"
+
+@tool
+def playwright_fill(selector: str, value: str, timeout: int = 30000) -> str:
+    """Fill a form field with text using the custom Playwright service"""
+    logger.info("Orchestrating Playwright fill", extra={'selector': selector, 'value_length': len(value), 'timeout': timeout})
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/fill",
+                json={'input': {'selector': selector, 'value': value, 'timeout': timeout}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("Playwright fill successful", extra={'selector': selector, 'value_length': len(value)})
+                return f"Successfully filled field {selector} with {len(value)} characters"
+            else:
+                logger.error("Playwright fill failed", extra={'error': result.get('error'), 'selector': selector})
+                return f"Fill failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright fill orchestrator error", exc_info=True, extra={'error': str(e), 'selector': selector})
+        return f"Playwright orchestrator error: {str(e)}"
+
+@tool
+def playwright_get_content(selector: str = None) -> str:
+    """Get text content from the page or a specific element using the custom Playwright service"""
+    logger.info("Orchestrating Playwright get content", extra={'selector': selector})
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/get-content",
+                json={'input': {'selector': selector}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                content = tool_result.get('content', '')
+                logger.info("Playwright get content successful", extra={'selector': selector or 'body', 'content_length': len(content)})
+                return f"Content retrieved from {selector or 'page'} ({len(content)} characters):\n\n{content}"
+            else:
+                logger.error("Playwright get content failed", extra={'error': result.get('error'), 'selector': selector})
+                return f"Get content failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright get content orchestrator error", exc_info=True, extra={'error': str(e), 'selector': selector})
+        return f"Playwright orchestrator error: {str(e)}"
+
+@tool
+def playwright_evaluate(script: str, args: list = None) -> str:
+    """Execute JavaScript in the page context using the custom Playwright service"""
+    logger.info("Orchestrating Playwright evaluate", extra={'script_length': len(script), 'args_count': len(args or [])})
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/evaluate",
+                json={'input': {'script': script, 'args': args or []}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                script_result = tool_result.get('result')
+                logger.info("Playwright evaluate successful", extra={'script_preview': script[:50], 'result_type': type(script_result).__name__})
+                return f"JavaScript executed successfully:\nScript: {script[:100]}{'...' if len(script) > 100 else ''}\nResult: {json.dumps(script_result, indent=2) if script_result is not None else 'undefined'}"
+            else:
+                logger.error("Playwright evaluate failed", extra={'error': result.get('error'), 'script': script[:100]})
+                return f"JavaScript execution failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright evaluate orchestrator error", exc_info=True, extra={'error': str(e), 'script': script[:50]})
+        return f"Playwright orchestrator error: {str(e)}"
+
+@tool
+def playwright_wait_for_selector(selector: str, timeout: int = 30000, state: str = "visible") -> str:
+    """Wait for an element to appear on the page using the custom Playwright service"""
+    logger.info("Orchestrating Playwright wait for selector", extra={'selector': selector, 'timeout': timeout, 'state': state})
+
+    try:
+        endpoint = "http://mcp-playwright:8080"
+
+        with httpx.Client() as client:
+            response = client.post(
+                f"{endpoint}/tools/wait-for-selector",
+                json={'input': {'selector': selector, 'timeout': timeout, 'state': state}},
+                timeout=timeout / 1000 + 10  # Convert ms to seconds and add buffer
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get('status') == 'success':
+                tool_result = result['result']
+                logger.info("Playwright wait for selector successful", extra={'selector': selector, 'found': tool_result.get('found')})
+                return f"Element found: {selector}\n- Visible: {tool_result.get('visible')}\n- Enabled: {tool_result.get('enabled')}\n- State: {tool_result.get('state')}"
+            else:
+                logger.error("Playwright wait for selector failed", extra={'error': result.get('error'), 'selector': selector})
+                return f"Wait for selector failed: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error("Playwright wait for selector orchestrator error", exc_info=True, extra={'error': str(e), 'selector': selector})
+        return f"Playwright orchestrator error: {str(e)}"
+
 # ====== LANGCHAIN AGENT SETUP ======
 
 # Collect all tools
@@ -694,7 +912,16 @@ tools = [
     # n8n MCP Orchestrator tools
     n8n_list_workflows,
     n8n_get_workflow,
-    n8n_get_database_statistics
+    n8n_get_database_statistics,
+
+    # Playwright MCP Orchestrator tools (Custom HTTP Service)
+    playwright_navigate,
+    playwright_screenshot,
+    playwright_click,
+    playwright_fill,
+    playwright_get_content,
+    playwright_evaluate,
+    playwright_wait_for_selector
 ]
 
 # LiteLLM client with configurable model
@@ -822,6 +1049,10 @@ def _get_tool_category(tool_name: str) -> str:
         return "web"
     elif tool_name in ["read_file", "list_directory"]:
         return "filesystem"
+    elif tool_name.startswith("playwright_"):
+        return "browser-automation"
+    elif tool_name.startswith("n8n_"):
+        return "workflow-automation"
     else:
         return "misc"
 
