@@ -1,50 +1,61 @@
 # Project: mcp-n8n
 
-## Quick Reference
-```bash
-# Test MCP server
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | ./mcp-wrapper.sh
+**Status**: ✅ **SUPERSEDED BY DIRECT API INTEGRATION** - See main MCP server implementation
+**Current Implementation**: Direct API calls in `/home/administrator/projects/mcp/server/app/main.py`
+**Integration Status**: **FULLY OPERATIONAL** as of 2025-09-16
 
-# Check n8n status
+## Quick Reference - Current Implementation
+```bash
+# Test n8n tools via main MCP server
+curl -X POST http://localhost:8001/tools/n8n_list_workflows -H "Content-Type: application/json" -d '{"input": {}}'
+curl -X POST http://localhost:8001/tools/n8n_get_database_statistics -H "Content-Type: application/json" -d '{"input": {}}'
+
+# Check n8n service status
 docker ps | grep n8n
 
-# View API key
-grep N8N_API_KEY /home/administrator/secrets/n8n-mcp.env
+# View current API key configuration
+grep N8N_API_KEY /home/administrator/secrets/mcp-server.env
 ```
 
-## Overview
-- **Purpose**: MCP server for n8n workflow automation integration with Claude Code
+## Overview - Implementation Evolution
+- **Original Purpose**: Standalone MCP server for n8n workflow automation integration
 - **Created**: 2025-09-05
-- **Version**: 1.0.0
-- **Status**: Active and configured
-- **n8n Instance**: https://n8n.ai-servicers.com
+- **Status Change**: **SUPERSEDED** by direct API integration in main MCP server (2025-09-16)
+- **Current Status**: **FULLY OPERATIONAL** via direct API integration
+- **n8n Instance**: http://n8n:5678 (internal Docker network)
 
-## Architecture
-MCP (Model Context Protocol) server that provides Claude Code with direct access to n8n workflow automation capabilities:
-- List and manage workflows
-- Execute workflows programmatically
-- Monitor execution status
-- Access workflow history
+## Architecture Evolution
 
-## Configuration
-- **Source Directory**: /home/administrator/projects/mcp-n8n
-- **Environment File**: /home/administrator/secrets/n8n-mcp.env
-- **Wrapper Script**: mcp-wrapper.sh (loads environment variables)
-- **Connection**: HTTP to n8n at linuxserver.lan:5678
+### **Original Architecture (2025-09-05 to 2025-09-16)**
+Standalone MCP server pattern:
+```
+Claude Code → mcp-wrapper.sh → Node.js MCP Server → n8n API
+```
 
-## MCP Tools Available
+### **Current Architecture (2025-09-16+)**
+Direct API integration in main MCP server:
+```
+Claude Code → MCP Server (mcp-server:8000) → Direct HTTP calls → n8n API (n8n:5678)
+```
 
-### Workflow Management
-- `list_workflows` - List all workflows with optional filtering
-- `get_workflow` - Get details of a specific workflow
-- `activate_workflow` - Activate a workflow
-- `deactivate_workflow` - Deactivate a workflow
+## Current Configuration
+- **Implementation Location**: `/home/administrator/projects/mcp/server/app/main.py`
+- **Environment File**: `/home/administrator/secrets/mcp-server.env`
+- **Connection**: Direct HTTP to n8n at `http://n8n:5678/api/v1`
+- **Authentication**: `X-N8N-API-KEY` header with JWT token
 
-### Workflow Execution
-- `execute_workflow` - Execute a workflow by ID or name
-- `get_executions` - Get recent workflow execution history
-- `get_execution_details` - Get details of a specific execution
-- `create_webhook_test` - Generate webhook test payloads
+## Available Tools (Current Implementation)
+
+### **n8n Workflow Tools (3 tools) - ✅ FULLY OPERATIONAL**
+1. **`n8n_list_workflows`** - List all n8n workflows with metadata
+   - Returns: workflow summary with ID, name, active status, node count
+
+2. **`n8n_get_workflow`** - Get detailed workflow information by ID
+   - Parameters: `workflow_id` (string)
+   - Returns: comprehensive workflow details including node types, tags, timestamps
+
+3. **`n8n_get_database_statistics`** - Get n8n instance statistics
+   - Returns: total workflows, active/inactive counts, node statistics, available node types
 
 ## MCP Resources
 - `n8n://workflows` - List of all workflows
@@ -59,33 +70,34 @@ Setup steps:
 3. API key is configured in `/home/administrator/secrets/n8n-mcp.env`
 4. Wrapper script at `mcp-wrapper.sh` loads credentials
 
-## Claude Code Integration
-Added to MCP servers configuration at:
-- **File**: /home/administrator/projects/.mcp.json
-- **Server Name**: n8n
-- **Command**: /home/administrator/projects/mcp-n8n/mcp-wrapper.sh
-- **Security**: API credentials loaded from secrets/n8n-mcp.env
+## Current Integration (2025-09-16+)
+Integrated directly into main MCP server:
+- **Main Server**: `http://mcp-server:8000` (internal) / `http://localhost:8001` (bridge)
+- **Tool Access**: Available via Claude Code MCP tools
+- **Security**: API credentials in `/home/administrator/secrets/mcp-server.env`
 
-### Usage in Claude Code
-After restarting Claude Code, use n8n commands:
-```
-# List all workflows
-list_workflows
+### Usage in Claude Code (Current)
+Access n8n tools through the main MCP infrastructure:
+```bash
+# Using MCP tools directly
+n8n_list_workflows
+n8n_get_workflow workflow_id="some-id"
+n8n_get_database_statistics
 
-# Get specific workflow
-get_workflow id="workflow-id"
-
-# Execute a workflow
-execute_workflow id="workflow-id" data='{"key": "value"}'
-
-# Check recent executions
-get_executions limit=10 status="success"
+# Or via HTTP API
+curl -X POST http://localhost:8001/tools/n8n_list_workflows \
+  -H "Content-Type: application/json" -d '{"input": {}}'
 ```
 
 ## Environment Variables
-Stored securely in `/home/administrator/secrets/n8n-mcp.env`:
-- **N8N_URL**: http://linuxserver.lan:5678
+
+### **Current Configuration** (in `/home/administrator/secrets/mcp-server.env`):
+- **N8N_API_URL**: `http://n8n:5678/api/v1` (internal Docker network)
 - **N8N_API_KEY**: JWT token for API authentication (obtained from n8n UI)
+
+### **Legacy Configuration** (in `/home/administrator/secrets/n8n-mcp.env`):
+- **N8N_URL**: http://linuxserver.lan:5678
+- **N8N_API_KEY**: JWT token for API authentication
 
 ## Monitoring & Testing
 ```bash
@@ -131,8 +143,17 @@ To update or regenerate the API key:
 
 ## Implementation Notes
 
-### 2025-09-05: Initial Deployment
-- Created MCP n8n server implementation
+### 2025-09-16: Migration to Direct API Integration ✅ **CURRENT**
+- **Architecture Change**: Replaced standalone MCP server with direct API integration
+- **Problem Solved**: Eliminated mcp-n8n container restart loops and orchestrator complexity
+- **Implementation**: Added 3 n8n tools directly to main MCP server (`/mcp/server/app/main.py`)
+- **Environment Fix**: Corrected `N8N_API_URL` loading by sourcing environment before docker-compose
+- **Security**: Maintained secure credential management in `/secrets/mcp-server.env`
+- **Tools Operational**: All 3 n8n tools fully functional via direct API calls
+- **Benefits**: Simplified architecture, reliable connectivity, integrated with 31-tool infrastructure
+
+### 2025-09-05: Initial Deployment (Legacy)
+- Created standalone MCP n8n server implementation
 - Runs directly via Node.js (not containerized)
 - Integrated with Claude Code configuration
 - Provides access to 8 workflow management tools
@@ -155,10 +176,24 @@ To update or regenerate the API key:
 - JWT token expires in 2026 (check n8n for renewal)
 - Runs with limited permissions
 
+## Migration Information
+
+### **For Current Usage (2025-09-16+)**
+- **Use**: Main MCP server tools (`n8n_list_workflows`, `n8n_get_workflow`, `n8n_get_database_statistics`)
+- **Access**: Via Claude Code MCP tools or HTTP API at `localhost:8001`
+- **Documentation**: See `/home/administrator/projects/mcp/server/CLAUDE.md`
+
+### **Legacy Standalone Server**
+- **Status**: Superseded but preserved for reference
+- **Directory**: `/home/administrator/projects/mcp/n8n/` (this location)
+- **Use Case**: Reference implementation for standalone MCP servers
+
 ## References
 - n8n Documentation: https://docs.n8n.io/api/
 - MCP SDK: https://github.com/anthropics/model-context-protocol
-- Main n8n Instance: https://n8n.ai-servicers.com
+- Main n8n Instance: Internal Docker network `http://n8n:5678`
+- Main MCP Server: `/home/administrator/projects/mcp/server/`
 
 ---
-*Last Updated: 2025-09-05*
+*Last Updated: 2025-09-16*
+*Status: Superseded by direct API integration in main MCP server*

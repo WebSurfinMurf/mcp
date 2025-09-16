@@ -45,9 +45,9 @@ services:
     environment:
       - LOKI_URL=http://loki:3100
       - NETDATA_URL=http://netdata:19999
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-Pass123qp}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - MEMORY_DB_PASSWORD=${MEMORY_DB_PASSWORD:-MemoryPass123}
+      - MEMORY_DB_PASSWORD=${MEMORY_DB_PASSWORD:?MEMORY_DB_PASSWORD is required}
     command:
       - "--host"
       - "0.0.0.0"
@@ -84,12 +84,12 @@ services:
       - postgres-net
     environment:
       - PGHOST=postgres
-      - PGPASSWORD=${POSTGRES_PASSWORD:-Pass123qp}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     command: |
       sh -c "
         until pg_isready -h postgres; do sleep 1; done
         psql -U admin -d postgres -c 'CREATE DATABASE IF NOT EXISTS memory_db;' || true
-        psql -U admin -d postgres -c \"CREATE USER IF NOT EXISTS memory_user WITH PASSWORD '${MEMORY_DB_PASSWORD:-MemoryPass123}';\" || true
+        psql -U admin -d postgres -c \"CREATE USER IF NOT EXISTS memory_user WITH PASSWORD '${MEMORY_DB_PASSWORD:?MEMORY_DB_PASSWORD is required}';\" || true
         psql -U admin -d postgres -c 'GRANT ALL ON DATABASE memory_db TO memory_user;' || true
         echo 'Database initialization complete'
       "

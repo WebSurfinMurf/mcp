@@ -109,11 +109,11 @@ fi
 
 # Test main application health endpoint
 echo -e "${YELLOW}Testing application health...${NC}"
-if timeout 30 bash -c 'until curl -sf http://localhost:8000/health > /dev/null; do sleep 2; done'; then
+if timeout 30 bash -c 'until curl -sf http://mcp.linuxserver.lan:8001/health > /dev/null; do sleep 2; done'; then
     echo -e "${GREEN}✓ Application health check passed${NC}"
 
     # Get health check details
-    health_info=$(curl -s http://localhost:8000/health | jq -r '.tools_count // "unknown"')
+    health_info=$(curl -s http://mcp.linuxserver.lan:8001/health | jq -r '.tools_count // "unknown"')
     echo -e "${GREEN}  Tools loaded: $health_info${NC}"
 else
     echo -e "${YELLOW}⚠ Application health check failed (may need more time to start)${NC}"
@@ -123,7 +123,7 @@ fi
 
 # Test OAuth2 proxy
 echo -e "${YELLOW}Testing OAuth2 proxy...${NC}"
-if curl -sf -I http://localhost:4180/health > /dev/null 2>&1; then
+if curl -sf -I http://mcp.linuxserver.lan:4180/health > /dev/null 2>&1; then
     echo -e "${GREEN}✓ OAuth2 proxy is responding${NC}"
 else
     echo -e "${YELLOW}⚠ OAuth2 proxy health check failed${NC}"
@@ -133,7 +133,7 @@ fi
 
 # Test tools endpoint
 echo -e "${YELLOW}Testing tools API...${NC}"
-if tools_response=$(curl -s http://localhost:8000/tools 2>/dev/null); then
+if tools_response=$(curl -s http://mcp.linuxserver.lan:8001/tools 2>/dev/null); then
     tools_count=$(echo "$tools_response" | jq -r '.count // "unknown"')
     echo -e "${GREEN}✓ Tools API responding: $tools_count tools available${NC}"
 
@@ -148,7 +148,7 @@ fi
 
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
 echo -e "Service Status:"
-echo -e "  Main Application: http://localhost:8000"
+echo -e "  Main Application: http://mcp.linuxserver.lan:8001"
 echo -e "  External URL: https://mcp.ai-servicers.com"
 echo -e "  Health Check: https://mcp.ai-servicers.com/health"
 echo -e "  API Docs: https://mcp.ai-servicers.com/docs"

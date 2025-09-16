@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MCP_SERVER_URL = "http://localhost:8001"
+MCP_SERVER_URL = "http://mcp.linuxserver.lan:8001"
 
 class MCPBridge:
     def __init__(self):
@@ -103,7 +103,7 @@ class MCPBridge:
                     }
                 },
                 "serverInfo": {
-                    "name": "centralized-mcp-server-bridge",
+                    "name": "mcp-server-bridge",
                     "version": "1.0.0"
                 }
                 # Tools are intentionally NOT included here - they come from tools/list

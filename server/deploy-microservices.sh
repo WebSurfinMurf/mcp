@@ -84,7 +84,7 @@ sleep 30
 echo -e "${YELLOW}Running health checks...${NC}"
 
 # Check main MCP server
-if curl -f -s http://localhost:8000/health > /dev/null; then
+if curl -f -s http://mcp.linuxserver.lan:8001/health > /dev/null; then
     echo -e "${GREEN}✓ Main MCP server healthy${NC}"
 else
     echo -e "${RED}✗ Main MCP server health check failed${NC}"
@@ -107,9 +107,9 @@ done
 echo -e "${GREEN}=== MCP Microservice Deployment Complete ===${NC}"
 echo -e "🔗 Internal Access: http://mcp.linuxserver.lan"
 echo -e "🔒 External Access: https://mcp.ai-servicers.com"
-echo -e "📊 API Documentation: http://localhost:8000/docs"
-echo -e "🔍 Health Check: http://localhost:8000/health"
-echo -e "📋 Tools List: http://localhost:8000/tools"
+echo -e "📊 API Documentation: http://mcp.linuxserver.lan:8001/docs"
+echo -e "🔍 Health Check: http://mcp.linuxserver.lan:8001/health"
+echo -e "📋 Tools List: http://mcp.linuxserver.lan:8001/tools"
 echo ""
 echo -e "${BLUE}Microservice Endpoints:${NC}"
 echo -e "• n8n MCP: http://mcp-n8n:3000 (internal)"
