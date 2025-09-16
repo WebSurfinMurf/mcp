@@ -3,6 +3,8 @@
 ## Executive Summary
 **PRODUCTION-READY MCP INFRASTRUCTURE COMPLETE**: All 25 tools fully operational across 8 categories with complete health monitoring and zero issues. Successfully implemented custom HTTP-native services, eliminated all restart loops, fixed tool discovery, and achieved production-grade stability. Expert-validated "AI Gateway with Adapters" architecture now production-ready.
 
+**🔧 CRITICAL NETWORK CONFIGURATION**: Always use `linuxserver.lan` instead of `localhost` for MCP bridge and internal service communication. This prevents Docker networking issues and ensures proper hostname resolution. The claude-code-bridge.py has been updated to use `http://mcp.linuxserver.lan:8001`.
+
 ## Current Status
 - **Status**: ✅ **PRODUCTION READY - ALL SYSTEMS OPERATIONAL**
 - **Tool Count**: **25 total tools across 8 categories** - **ALL WORKING**
@@ -15,6 +17,13 @@
 - **Last Major Update**: 2025-09-15 - **PRODUCTION READINESS ACHIEVED - All Issues Resolved**
 
 ## Recent Work & Changes
+
+### Session: 2025-09-16 - **NETWORK CONFIGURATION FIX**
+- **[MCP Bridge Configuration Fix]**: Updated claude-code-bridge.py to use proper internal hostname
+  - ✅ **Issue**: Bridge using `localhost:8001` causing Docker networking issues
+  - ✅ **Solution**: Changed `MCP_SERVER_URL` to `http://mcp.linuxserver.lan:8001`
+  - ✅ **Result**: All MCP tools now properly accessible via Claude Code
+  - ✅ **Documentation**: Added network configuration notes to prevent future issues
 
 ### Session: 2025-09-15 - **PRODUCTION READINESS COMPLETE - ALL ISSUES RESOLVED**
 - **[Container Health Fixed]**: Resolved mcp-timescaledb-http unhealthy status

@@ -113,7 +113,7 @@ services:
       - PGHOST=postgres
       - PGPORT=5432
       - PGUSER=admin
-      - PGPASSWORD=${POSTGRES_PASSWORD:-Pass123qp}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - PGDATABASE=postgres
       - MCP_MODE=stdio
     labels:

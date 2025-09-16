@@ -546,124 +546,164 @@ def list_directory(directory_path: str) -> str:
 
 @tool
 def n8n_list_workflows() -> str:
-    """List all workflows from n8n MCP service"""
-    logger.info("Orchestrating n8n workflow list request")
+    """List all workflows from n8n via direct API"""
+    logger.info("Requesting n8n workflow list via direct API")
 
     try:
-        endpoint = os.environ.get("MCP_N8N_ENDPOINT", "http://mcp-n8n:3000")
-        auth_token = os.environ.get("MCP_N8N_AUTH_TOKEN", "secure-n8n-token-2025-mcp-orchestrator")
+        n8n_url = os.environ.get("N8N_API_URL", "http://n8n:5678/api/v1")
+        n8n_api_key = os.environ.get("N8N_API_KEY")
 
-        # MCP JSON-RPC request to list workflows
-        mcp_request = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": "n8n_list_workflows",
-                "arguments": {}
-            }
-        }
+        if not n8n_api_key:
+            logger.error("N8N_API_KEY not configured")
+            return "Error: n8n API key not configured"
 
         with httpx.Client() as client:
-            response = client.post(
-                f"{endpoint}/mcp",
-                json=mcp_request,
-                headers={"Authorization": f"Bearer {auth_token}"},
+            response = client.get(
+                f"{n8n_url}/workflows",
+                headers={"X-N8N-API-KEY": n8n_api_key},
                 timeout=30.0
             )
             response.raise_for_status()
 
             result = response.json()
-            if "result" in result:
-                logger.info("n8n workflow list retrieved successfully")
-                return json.dumps(result["result"], indent=2)
+            workflows = result.get("data", [])
+
+            if workflows:
+                logger.info(f"Retrieved {len(workflows)} workflows from n8n")
+                workflow_summary = []
+                for workflow in workflows:
+                    workflow_summary.append({
+                        "id": workflow.get("id"),
+                        "name": workflow.get("name"),
+                        "active": workflow.get("active"),
+                        "nodes": len(workflow.get("nodes", [])),
+                        "connections": len(workflow.get("connections", {}))
+                    })
+                return json.dumps({"workflows": workflow_summary, "total": len(workflows)}, indent=2)
             else:
-                logger.error("No result in n8n MCP response", extra={'response': result})
-                return f"n8n MCP error: {result.get('error', 'Unknown error')}"
+                logger.info("No workflows found in n8n")
+                return json.dumps({"workflows": [], "total": 0}, indent=2)
 
     except Exception as e:
         logger.error("n8n workflow list failed", exc_info=True, extra={'error': str(e)})
-        return f"n8n orchestrator error: {str(e)}"
+        return f"n8n API error: {str(e)}"
 
 @tool
 def n8n_get_workflow(workflow_id: str) -> str:
-    """Get workflow details from n8n MCP service"""
-    logger.info("Orchestrating n8n workflow details request", extra={'workflow_id': workflow_id})
+    """Get workflow details from n8n via direct API"""
+    logger.info("Requesting n8n workflow details via direct API", extra={'workflow_id': workflow_id})
 
     try:
-        endpoint = os.environ.get("MCP_N8N_ENDPOINT", "http://mcp-n8n:3000")
-        auth_token = os.environ.get("MCP_N8N_AUTH_TOKEN", "secure-n8n-token-2025-mcp-orchestrator")
+        n8n_url = os.environ.get("N8N_API_URL", "http://n8n:5678/api/v1")
+        n8n_api_key = os.environ.get("N8N_API_KEY")
 
-        mcp_request = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": "n8n_get_workflow",
-                "arguments": {"id": workflow_id}
-            }
-        }
+        if not n8n_api_key:
+            logger.error("N8N_API_KEY not configured")
+            return "Error: n8n API key not configured"
 
         with httpx.Client() as client:
-            response = client.post(
-                f"{endpoint}/mcp",
-                json=mcp_request,
-                headers={"Authorization": f"Bearer {auth_token}"},
+            response = client.get(
+                f"{n8n_url}/workflows/{workflow_id}",
+                headers={"X-N8N-API-KEY": n8n_api_key},
                 timeout=30.0
             )
             response.raise_for_status()
 
-            result = response.json()
-            if "result" in result:
-                logger.info("n8n workflow details retrieved successfully", extra={'workflow_id': workflow_id})
-                return json.dumps(result["result"], indent=2)
-            else:
-                logger.error("No result in n8n MCP response", extra={'response': result})
-                return f"n8n MCP error: {result.get('error', 'Unknown error')}"
+            workflow = response.json()
 
+            # Extract key information from the workflow
+            workflow_info = {
+                "id": workflow.get("id"),
+                "name": workflow.get("name"),
+                "active": workflow.get("active"),
+                "nodes": len(workflow.get("nodes", [])),
+                "connections": len(workflow.get("connections", {})),
+                "tags": workflow.get("tags", []),
+                "createdAt": workflow.get("createdAt"),
+                "updatedAt": workflow.get("updatedAt"),
+                "nodeTypes": list(set([node.get("type") for node in workflow.get("nodes", []) if node.get("type")]))
+            }
+
+            logger.info("n8n workflow details retrieved successfully")
+            return json.dumps(workflow_info, indent=2)
+
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            logger.warning(f"Workflow {workflow_id} not found")
+            return f"Error: Workflow {workflow_id} not found"
+        else:
+            logger.error("n8n workflow details HTTP error", exc_info=True, extra={'workflow_id': workflow_id, 'status_code': e.response.status_code})
+            return f"n8n API error: HTTP {e.response.status_code}"
     except Exception as e:
         logger.error("n8n workflow details failed", exc_info=True, extra={'error': str(e), 'workflow_id': workflow_id})
-        return f"n8n orchestrator error: {str(e)}"
+        return f"n8n API error: {str(e)}"
 
 @tool
 def n8n_get_database_statistics() -> str:
-    """Get n8n MCP database statistics - demonstrates orchestrator pattern"""
-    logger.info("Orchestrating n8n database statistics request")
+    """Get n8n instance statistics via direct API"""
+    logger.info("Requesting n8n instance statistics via direct API")
 
     try:
-        endpoint = os.environ.get("MCP_N8N_ENDPOINT", "http://mcp-n8n:3000")
-        auth_token = os.environ.get("MCP_N8N_AUTH_TOKEN", "secure-n8n-token-2025-mcp-orchestrator")
+        n8n_url = os.environ.get("N8N_API_URL", "http://n8n:5678/api/v1")
+        n8n_api_key = os.environ.get("N8N_API_KEY")
 
-        mcp_request = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": "get_database_statistics",
-                "arguments": {}
-            }
-        }
+        if not n8n_api_key:
+            logger.error("N8N_API_KEY not configured")
+            return "Error: n8n API key not configured"
 
         with httpx.Client() as client:
-            response = client.post(
-                f"{endpoint}/mcp",
-                json=mcp_request,
-                headers={"Authorization": f"Bearer {auth_token}"},
+            # Get all workflows for statistics
+            workflows_response = client.get(
+                f"{n8n_url}/workflows",
+                headers={"X-N8N-API-KEY": n8n_api_key},
                 timeout=30.0
             )
-            response.raise_for_status()
+            workflows_response.raise_for_status()
+            workflows_data = workflows_response.json()
+            workflows = workflows_data.get("data", [])
 
-            result = response.json()
-            if "result" in result:
-                logger.info("n8n database statistics retrieved successfully")
-                return json.dumps(result["result"], indent=2)
-            else:
-                logger.error("No result in n8n database statistics", extra={'response': result})
-                return f"n8n MCP database statistics error: {result.get('error', 'Unknown error')}"
+            # Calculate statistics
+            total_workflows = len(workflows)
+            active_workflows = sum(1 for w in workflows if w.get("active"))
+            total_nodes = sum(len(w.get("nodes", [])) for w in workflows)
+
+            # Count unique node types
+            all_node_types = set()
+            for workflow in workflows:
+                for node in workflow.get("nodes", []):
+                    if node.get("type"):
+                        all_node_types.add(node.get("type"))
+
+            # Get tags
+            all_tags = set()
+            for workflow in workflows:
+                for tag in workflow.get("tags", []):
+                    all_tags.add(tag)
+
+            statistics = {
+                "instance_info": {
+                    "total_workflows": total_workflows,
+                    "active_workflows": active_workflows,
+                    "inactive_workflows": total_workflows - active_workflows
+                },
+                "node_statistics": {
+                    "total_nodes": total_nodes,
+                    "unique_node_types": len(all_node_types),
+                    "avg_nodes_per_workflow": round(total_nodes / total_workflows, 2) if total_workflows > 0 else 0
+                },
+                "organization": {
+                    "total_tags": len(all_tags),
+                    "tags": sorted(list(all_tags))
+                },
+                "node_types_available": sorted(list(all_node_types))[:20]  # Show first 20 node types
+            }
+
+            logger.info(f"n8n statistics: {total_workflows} workflows, {total_nodes} nodes, {len(all_node_types)} node types")
+            return json.dumps(statistics, indent=2)
 
     except Exception as e:
         logger.error("n8n database statistics failed", exc_info=True, extra={'error': str(e)})
-        return f"n8n orchestrator error: {str(e)}"
+        return f"n8n API error: {str(e)}"
 
 # ====== PLAYWRIGHT ORCHESTRATOR TOOLS ======
 

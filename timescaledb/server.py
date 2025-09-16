@@ -32,7 +32,7 @@ DB_CONFIG = {
     "port": int(os.getenv("TSDB_PORT", "5432")),  # Internal port, not external 5433
     "database": os.getenv("TSDB_DATABASE", "timescale"),
     "user": os.getenv("TSDB_USER", "tsdbadmin"),
-    "password": os.getenv("TSDB_PASSWORD", "TimescaleSecure2025"),
+    "password": os.getenv("TSDB_PASSWORD"),
     "min_size": 2,
     "max_size": 10,
     "command_timeout": 60,
@@ -429,7 +429,7 @@ async def tsdb_show_chunks(request: ToolRequest):
         SELECT
             chunk_schema,
             chunk_name,
-            table_name,
+            hypertable_name,
             primary_dimension,
             primary_dimension_type,
             range_start,
@@ -437,10 +437,7 @@ async def tsdb_show_chunks(request: ToolRequest):
             range_start_integer,
             range_end_integer,
             is_compressed,
-            chunk_table_size,
-            index_size,
-            toast_size,
-            total_size
+            chunk_creation_time
         FROM timescaledb_information.chunks
         WHERE hypertable_name = $1
         ORDER BY range_start;

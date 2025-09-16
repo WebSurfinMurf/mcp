@@ -40,7 +40,7 @@ def generate_mcp_config():
         "command": "npx",
         "args": ["@modelcontextprotocol/server-github"],
         "env": {
-            "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_LBpsHGGiFGQYqJcXtCgPCVtnwJYfAC3IZFEX"
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
         }
     }
     

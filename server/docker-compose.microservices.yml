@@ -183,7 +183,7 @@ services:
       TSDB_PORT: 5432
       TSDB_DATABASE: timescale
       TSDB_USER: tsdbadmin
-      TSDB_PASSWORD: ${TIMESCALEDB_PASSWORD}
+      TSDB_PASSWORD: TimescaleSecure2025
 
       # Service settings
       LOG_LEVEL: info

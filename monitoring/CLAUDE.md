@@ -185,16 +185,16 @@ sum by (level) (rate({container="grafana"} | json | __error__="" [5m]))
 
 ### Dependencies
 1. **Loki** (Log Aggregation)
-   - URL: http://localhost:3100
+   - URL: http://loki:3100 (internal Docker network)
    - Stores logs from all containers
    - 30-day retention policy
    - LogQL query language
 
 2. **Netdata** (Metrics Collection)
-   - URL: http://localhost:19999
+   - URL: http://netdata:19999 (internal Docker network)
    - Real-time system metrics
    - Per-second granularity
-   - Exposed on localhost only (security)
+   - Exposed on internal networks only (security)
 
 3. **Promtail** (Log Shipping)
    - Collects logs from containers
@@ -208,14 +208,14 @@ sum by (level) (rate({container="grafana"} | json | __error__="" [5m]))
 # Check if Loki is running
 docker ps | grep loki
 
-# Verify Loki is ready
-curl http://localhost:3100/ready
+# Verify Loki is ready (from inside Docker network)
+docker exec monitoring curl http://loki:3100/ready
 
 # Check Loki logs
 docker logs loki --tail 50
 
-# Test query
-curl -G -s "http://localhost:3100/loki/api/v1/query" \
+# Test query (from inside Docker network)
+docker exec monitoring curl -G -s "http://loki:3100/loki/api/v1/query" \
   --data-urlencode 'query={container="loki"}' | jq .
 ```
 
@@ -224,11 +224,8 @@ curl -G -s "http://localhost:3100/loki/api/v1/query" \
 # Check if Netdata is running
 docker ps | grep netdata
 
-# Verify port binding
-netstat -tlnp | grep 19999
-
-# Test API access
-curl http://localhost:19999/api/v1/info
+# Test API access (from inside Docker network)
+docker exec monitoring curl http://netdata:19999/api/v1/info
 
 # Check Netdata logs
 docker logs netdata --tail 50
@@ -252,7 +249,7 @@ npm test
 - Check Promtail is running and collecting logs
 - Verify container names in queries
 - Check time range (default is 24 hours)
-- Ensure Loki has data: `curl http://localhost:3100/loki/api/v1/labels`
+- Ensure Loki has data: `docker exec monitoring curl http://loki:3100/loki/api/v1/labels`
 
 ## Performance Considerations
 - **Query Limits**: Default 100 results per query
