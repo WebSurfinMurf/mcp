@@ -18,11 +18,6 @@ Based on research and recommendations, these are the best-of-breed MCP servers f
 - **Protocol**: HTTP/stdio (more comprehensive than telegraph-it version)
 - **Why This One**: More tools (17 vs basic implementations), actively maintained, proven quality
 
-### 1. **PostgreSQL**: crystaldba/postgres-mcp ✅ **ALTERNATIVE CONSIDERED**
-- **Repository**: https://github.com/crystaldba/postgres-mcp
-- **Capabilities**: Performance analysis and monitoring for PostgreSQL
-- **Note**: This is PostgreSQL-specific monitoring, need generic system monitoring
-
 ### 2. **Monitoring**: Custom System Monitoring ✅ **RECOMMENDED**
 - **Approach**: Implement lightweight MCP server wrapping existing Loki/Netdata APIs
 - **Capabilities**: System metrics, log search (leveraging existing infrastructure)
@@ -76,7 +71,7 @@ services:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=Pass123qp
     ports:
-      - "8080:8080"  # SSE endpoint for LiteLLM
+      - "8080:8080"  # HTTP API endpoint for LiteLLM Smart Router
 ```
 
 ### Phase 3: Filesystem MCP Server (Day 3)
@@ -100,7 +95,7 @@ services:
     environment:
       - ALLOWED_PATHS=/workspace,/tmp
     ports:
-      - "8081:8080"  # SSE endpoint
+      - "8081:8080"  # HTTP API endpoint for LiteLLM Smart Router
 ```
 
 ### Phase 4: Monitoring MCP Server (Day 4)
@@ -127,35 +122,52 @@ services:
       - LOKI_URL=http://loki:3100
       - NETDATA_URL=http://netdata:19999
     ports:
-      - "8082:8080"  # SSE endpoint
+      - "8082:8080"  # HTTP API endpoint for LiteLLM Smart Router
 ```
 
 ### Phase 5: LiteLLM Integration Testing (Day 5)
 **Deliverables**:
-- [ ] Configure LiteLLM with 3 MCP servers
-- [ ] Test SSE connections and tool discovery
-- [ ] Validate each tool works through LiteLLM
+- [ ] Configure LiteLLM with 3 MCP tools using Smart Router pattern
+- [ ] Test HTTP tool endpoints directly
+- [ ] Validate each tool works through LiteLLM proxy routing
 - [ ] Test with OpenWebUI end-to-end
 - [ ] Document any issues or limitations
 
-**LiteLLM Configuration**:
+**LiteLLM Configuration - CORRECTED Smart Router Pattern**:
 ```yaml
-# Add to /home/administrator/projects/litellm/config.yaml
-litellm_settings:
-  mcp_servers:
-    postgresql:
-      transport: "http"
-      url: "http://mcp-postgresql:8080"
-      description: "PostgreSQL database operations (17 tools)"
-    filesystem:
-      transport: "http"
-      url: "http://mcp-filesystem:8081"
-      description: "Secure file operations"
-    monitoring:
-      transport: "http"
-      url: "http://mcp-monitoring:8082"
-      description: "System monitoring and logs"
+# Add to model_list in /home/administrator/projects/litellm/config.yaml
+model_list:
+  # --- EXISTING REAL LLM MODELS (keep unchanged) ---
+  - model_name: gpt-5
+    litellm_params:
+      model: gpt-5
+      api_key: os.environ/OPENAI_API_KEY
+  # ... (all existing models) ...
+
+  # --- NEW: MCP TOOL "MODELS" using Smart Router Pattern ---
+  - model_name: tool-postgresql
+    litellm_params:
+      model: custom_llm
+      api_base: "http://mcp-postgresql:8080/tools"
+      custom_llm_provider: "openai"
+
+  - model_name: tool-filesystem
+    litellm_params:
+      model: custom_llm
+      api_base: "http://mcp-filesystem:8081/tools"
+      custom_llm_provider: "openai"
+
+  - model_name: tool-monitoring
+    litellm_params:
+      model: custom_llm
+      api_base: "http://mcp-monitoring:8082/tools"
+      custom_llm_provider: "openai"
 ```
+
+**How Smart Router Works**:
+- Each tool is registered as a "fake" model in LiteLLM's model list
+- When clients request `tool-postgresql`, LiteLLM acts as HTTP proxy to `http://mcp-postgresql:8080/tools`
+- This is an official LiteLLM feature, not custom configuration
 
 ---
 
@@ -169,11 +181,11 @@ litellm_settings:
 - [ ] Response times under 2 seconds for typical operations
 
 ### Integration Validation
-- [ ] OpenWebUI can access models through LiteLLM
-- [ ] Models can automatically call MCP tools when contextually appropriate
-- [ ] Tool calls execute successfully and return proper results
+- [ ] OpenWebUI can access both real LLM models and tool "models" through LiteLLM
+- [ ] Tool "models" can be called directly (e.g. `tool-postgresql`) for specific operations
+- [ ] HTTP proxy routing works correctly from LiteLLM to MCP containers
 - [ ] Error handling works gracefully for failed tool calls
-- [ ] No impact on existing OpenWebUI functionality
+- [ ] No impact on existing OpenWebUI real LLM functionality
 
 ### Functional Validation
 **PostgreSQL Tools** (minimum 5 working):
@@ -263,18 +275,22 @@ services:
 ### Technical Risks
 - **Risk**: MCP server implementations may not work with our infrastructure
   - **Mitigation**: Start with PostgreSQL (most critical), verify before proceeding
-- **Risk**: LiteLLM MCP integration may have bugs
-  - **Mitigation**: Test with minimal setup first, document workarounds
+- **Risk**: LiteLLM Smart Router pattern may have limitations with tool routing
+  - **Mitigation**: Test HTTP proxy routing thoroughly, validate with simple requests first
 - **Risk**: Performance impact on existing services
   - **Mitigation**: Use separate network, monitor resource usage
 
 ### Implementation Risks
-- **Risk**: Official filesystem MCP may be too restrictive
-  - **Mitigation**: Test with specific file paths, adjust security as needed
+- **Risk**: Official filesystem MCP may be too restrictive or stdio-only
+  - **Mitigation**: May need to create HTTP adapter wrapper, test with specific file paths
 - **Risk**: Custom monitoring implementation introduces bugs
   - **Mitigation**: Keep implementation minimal, reuse existing API calls
-- **Risk**: Container networking complexity
-  - **Mitigation**: Use proven patterns from existing infrastructure
+- **Risk**: Container networking complexity between LiteLLM and MCP containers
+  - **Mitigation**: Use proven patterns from existing infrastructure, test connectivity first
+
+### Critical Architecture Risk (RESOLVED)
+- **Risk**: ~~Using non-existent `mcp_servers` configuration in LiteLLM~~
+  - **Resolution**: Replaced with correct Smart Router pattern using `model_list` entries
 
 ### Mitigation Strategies
 - **Incremental Testing**: Validate each MCP server independently before integration
