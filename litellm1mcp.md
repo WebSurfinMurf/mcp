@@ -1,3 +1,10 @@
+I have tried to deploy litellm with mcp gateway and failed multiple times.  This time i want to simplify the deploy by sticking to LAN access on server linuxserver.lan.
+PLEASE do some deep digging on best practices to register an MCP server to litellm for stdio, http, and sse.
+I want to avoide altering litellm and downloaded mcp's, but if its more straight forward to do so, that is OK.  PLEASE summarize why and ASK me first.
+I am very fine with each mcp runs in a docker container, i dont view that as modifying, but as a wrapper.
+Please keep this in mind when reading below.
+LITELLM PRIMER:
+
 # Project Plan: Standalone LiteLLM MCP Gateway Deployment
 
 **Objective:** Deploy a standalone, internal-only LiteLLM proxy that acts as an MCP Gateway. This deployment will be simple, secure, and avoid external dependencies like Traefik and Keycloak. The initial focus is on integrating with the `mcp-postgres` service for tool-calling and using a PostgreSQL database for logging and auditing.
