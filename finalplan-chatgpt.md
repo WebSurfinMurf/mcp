@@ -1,228 +1,304 @@
 # Refined Plan: LiteLLM v1.77.3 MCP Gateway on linuxserver.lan
 
+## 0. Community-Supported MCP Gateway Options (Assignment Outcome)
+| Candidate | Community Status | MCP Support | Fit for Requirement | Notes |
+|-----------|------------------|-------------|---------------------|-------|
+| **LiteLLM Proxy** (BerriAI) | 9.5k★ GitHub, active releases, Discord + docs | Native `mcp_servers` for `stdio`, `http`, `sse`; integrates auth, key mgmt, logging | ✅ Strong match; already part of stack; OpenAI-compatible API for clients (Claude Code, Gemini CLI, ChatGPT Codex, Open WebUI, VS Code) | Runs as central gateway; no code changes required; supports LAN-only deployments |
+| **Model Context Runner** (Sourcegraph) | 2.5k★ GitHub, maintained; designed for Claude Desktop/VS Code | Focused on dev tooling; MCP registry but less customizable for multi-client sharing | ⚠️ Partial fit; better for per-user environments than central LAN service | Requires per-user runtimes; limited routing features |
+| **mcp-proxy** (Community forks) | Multiple small repos (<200★) | Experimental HTTP/SSE forwarding | ❌ Weak fit; low adoption, unclear maintenance | Would require manual auth/logging layers |
+
+**Recommendation:** Use **LiteLLM Proxy** as the central MCP gateway. It has the strongest community backing, already aligns with your infrastructure, and natively supports MCP transports plus the OpenAI-compatible API your clients expect. No code modifications to LiteLLM or third-party MCP servers are necessary—only configuration and Docker orchestration.
+
 ## 1. Context Snapshot
-- Read and aligned with `/home/administrator/projects/AINotes/SYSTEM-OVERVIEW.md`, `network.md`, `security.md`, `logging.md`, `codingstandards.md`, `memoryrules.md`
-- Current LiteLLM deployment attempts failed; infrastructure reset under `/home/administrator/projects/mcp/`
-- Existing platform provides Postgres (`postgres-net`), Traefik with LAN DNS, centralized logging via Loki/Promtail, and Keycloak SSO
-- Requirement: LAN-only access, LiteLLM `v1.77.3-stable`, no code changes to LiteLLM or MCP servers, MCPs may run in their own Docker containers
+- Initialization files reviewed per `AINotes/memoryfiles.md` directive.
+- Requirements confirmed in `projects/mcp/requirements.md`: LiteLLM lives under `projects/litellm`, individual MCP servers under `projects/mcp/{service}`.
+- Infrastructure provides shared Postgres (`postgres-net`), Traefik reverse proxy, centralized observability, and LAN DNS (`*.linuxserver.lan`).
+- Prior LiteLLM + MCP attempts failed; MCP directories reset for clean implementation.
 
 ## 2. Goals and Guardrails
-- Deliver a repeatable, declarative deployment for LiteLLM + MCP connectors
-- Standardize how MCP transports (stdio, http, sse) are registered with LiteLLM
-- Use existing infrastructure conventions (naming, secrets storage, networks, logging)
-- Keep surface LAN-only; prepare hooks for later Traefik/OAuth fronting without requiring it now
-- Provide validation and rollback guidance; highlight risks and open questions
+- Keep deployment LAN-only while enabling future Traefik/OIDC layering.
+- Pin LiteLLM to `v1.77.3-stable`, avoid modifying upstream code or MCP packages.
+- Standardize registration patterns for `stdio`, `http`, and `sse` transports.
+- Follow existing naming conventions and secrets handling (`/home/administrator/secrets/`).
+- Provide validation, observability, and rollback guidance.
 
 ## 3. Target Architecture Overview
-- **Project name:** `mcp-gateway` (directories `/home/administrator/projects/mcp/gateway`, secrets in `/home/administrator/secrets/mcp-gateway.env`)
-- **Core services (docker compose):**
-  1. `mcp-litellm-proxy` – LiteLLM container pinned to `ghcr.io/berriai/litellm:v1.77.3-stable`
-  2. `mcp-litellm-postgres` – (optional) dedicated Postgres 16-alpine if shared cluster is undesirable
-  3. MCP connector containers (one per tool domain); start with `mcp-postgres` for DB access
+- **LiteLLM project root:** `/home/administrator/projects/litellm`
+  - Config: `/home/administrator/projects/litellm/config/config.yaml`
+  - Compose file: `/home/administrator/projects/litellm/docker-compose.yml`
+  - Scripts/notes: `/home/administrator/projects/litellm/README.md` (update after success)
+- **Secrets file:** `/home/administrator/secrets/litellm.env` (600 perms)
+- **MCP services:** individual directories under `/home/administrator/projects/mcp/` (e.g., `/home/administrator/projects/mcp/postgres`, `/home/administrator/projects/mcp/filesystem`), each with its own Compose or Dockerfile as needed.
 - **Networks:**
-  - Attach LiteLLM to `traefik-proxy` (future TLS/OAuth), `postgres-net` (for shared DB), and a new private network `mcp-gateway-net` for MCP connectors
-  - Expose LiteLLM on host `4000/tcp` (LAN) and optionally register Traefik entry later
-- **Storage:**
-  - Mount configuration from `/home/administrator/projects/mcp/gateway/config/config.yaml`
-  - Secrets exclusively in `/home/administrator/secrets/mcp-gateway.env` with `chmod 600`
-  - Optional Postgres volume `mcp_gateway_pgdata`
-- **Logging:**
-  - Enable LiteLLM JSON logs → Promtail via Docker logging driver; ensure `labels` match observability conventions
-  - MCP containers adopt same logging configuration to feed Promtail
+  - `traefik-proxy` (external, existing) for future reverse proxy integration.
+  - `postgres-net` (external) for database connectivity.
+  - `litellm-mcp-net` (new bridge) linking LiteLLM and MCP containers.
+- **Core containers:**
+  1. `litellm-proxy` (LiteLLM v1.77.3-stable)
+  2. Optional `litellm-db` (Postgres 16-alpine) if not using shared cluster.
+  3. `mcp-postgres` (community `crystaldba/postgres-mcp`) as first MCP connector.
+  4. Additional MCP services (filesystem, fetch, n8n, etc.) deployed in their respective directories and attached to `litellm-mcp-net`.
 
 ## 4. MCP Transport Best Practices
-| Transport | When to Use | Registration Pattern | Operational Notes |
-|-----------|-------------|----------------------|-------------------|
-| `sse` | Preferred for containerized MCPs on LAN | `mcp_servers.<alias>.url`, `transport: "sse"` | Use per-service container; expose fixed port; health check using `/status` if provided |
-| `http` | For MCP servers exposing HTTP JSON endpoints | Same as SSE but `transport: "http"` | Ensure MCP implements MCP HTTP spec; configure auth headers via `auth_type`/`auth_value` |
-| `stdio` | Lightweight local tools packaged with LiteLLM container | `transport: "stdio"`, `command`, `args`, `env` | Keep binaries inside LiteLLM image or bind-mount; avoid Docker exec hacks; for isolated tools wrap into SSE container instead |
+| Transport | Usage Guidance | LiteLLM Config Snippet | Operational Notes |
+|-----------|----------------|------------------------|-------------------|
+| **SSE (preferred)** | Default for containerized MCP services on LAN. Run MCP in its own container, expose fixed port, connect via `litellm-mcp-net`. | ```yaml
+mcp_servers:
+  db_main:
+    transport: sse
+    url: http://mcp-postgres:8686
+    api_keys: [${LITELLM_VIRTUAL_KEY_TEST}]
+``` | Supports long-lived connections, streaming, simple firewalling. Provide health endpoints where available. |
+| **HTTP** | Use if MCP server exposes RESTful MCP interface (rare today). | ```yaml
+mcp_servers:
+  monitoring:
+    transport: http
+    url: http://mcp-monitor:8700
+    auth_type: bearer_token
+    auth_value: ${MCP_MONITOR_TOKEN}
+``` | Ensure server adheres to MCP HTTP spec; configure auth headers through LiteLLM. |
+| **Stdio** | Only for lightweight local tools packaged alongside LiteLLM in `/home/administrator/projects/litellm/tools`. | ```yaml
+mcp_servers:
+  local_tools:
+    transport: stdio
+    command: "/app/tools/run"
+    args: ["--mode", "cli"]
+    env:
+      TOOLS_ROOT: /app/tools
+``` | Avoid wrapping Docker containers with stdio; instead expose them via SSE. Requires binaries accessible within LiteLLM container image or bind-mount. |
 
-**Auth & Headers:**
-- Use `api_keys` list to map LiteLLM virtual keys allowed to see a server
-- For per-request credentials, clients send `x-mcp-{alias}-{header}` (e.g., `x-mcp-db-authorization`)
-- For static credentials, specify `auth_type: bearer_token` + `auth_value: ${MCP_POSTGRES_BEARER}` in config; inject values via environment
-
-**Aliases & Scoping:**
-- Keep `litellm_settings.mcp_aliases` small so clients can request only needed servers (`x-mcp-servers: db,fileops`)
-- Document alias → service mapping in `gateway/README.md` (future)
+**Auth & Header Tips:**
+- Use `api_keys` to scope LiteLLM virtual keys to specific MCP servers.
+- Clients select servers via `x-mcp-servers` header (`db_main,fs_local`).
+- Per-request headers forwarded via `x-mcp-{alias}-{header}` (e.g., `x-mcp-db_main-authorization`).
+- Static secrets can be injected with `auth_type: bearer_token` and `auth_value` placeholder variables that resolve from `litellm.env`.
 
 ## 5. Implementation Phases
 
 ### Phase A – Environment Preparation
-1. Create project skeleton:
+1. Ensure project structure:
    ```bash
-   mkdir -p /home/administrator/projects/mcp/gateway/config
-   cp /home/administrator/projects/mcp/litellmprimer.md /home/administrator/projects/mcp/gateway/REFERENCES.md
-   touch /home/administrator/projects/mcp/gateway/README.md
+   cd /home/administrator/projects/litellm
+   mkdir -p config tools tmp
    ```
-2. Create secrets file `/home/administrator/secrets/mcp-gateway.env` with:
-   - `LITELLM_MASTER_KEY=` (new random value)
-   - `DATABASE_URL=` pointing to either shared `postgres` container or dedicated service
-   - `VIRTUAL_KEY_TEST=...` for mock clients
-   - `MCP_POSTGRES_URL=postgresql://...` (no embedded secrets once Keycloak/OAuth used)
-   - Additional MCP auth tokens (if required)
-3. `chmod 600 /home/administrator/secrets/mcp-gateway.env`
-4. If reusing central Postgres: create database + role (`litellm_db`, `litellm_user`) using admin credentials per `AINotes/integration.md`
-5. Reserve host ports (LiteLLM 4000, MCP connectors e.g., 48010+) to avoid clashes; confirm with `sudo ss -tlnp` (approval needed if run)
+2. Create secrets file `/home/administrator/secrets/litellm.env` containing (replace placeholders):
+   ```bash
+   LITELLM_MASTER_KEY=sk-...
+   DATABASE_URL=postgresql://litellm_user:...@postgres:5432/litellm_db
+   LITELLM_VIRTUAL_KEY_TEST=litellm-test-key-...
+   ```
+   Set permissions `chmod 600 /home/administrator/secrets/litellm.env`.
+3. **Database strategy decision:**
+   - **Option A (recommended):** Reuse existing Postgres on `postgres-net`; keep `DATABASE_URL` pointed at that hostname.
+   - **Option B:** Deploy the optional `litellm-db` service below; update `DATABASE_URL` to reference it.
+   Choose one approach before continuing.
+4. If using shared Postgres:
+   - Follow `AINotes/integration.md` to create `litellm_db` and `litellm_user`.
+   - Grant read privileges for MCP connectors as needed; keep write access disabled until explicitly required.
+5. Reserve LAN ports (LiteLLM `4000`, MCP connectors `48xxx`) ensuring no collisions (`sudo ss -tlnp` if permissible).
+6. Populate `/home/administrator/projects/mcp/postgres/` with connector assets (compose file, docs) for the community `crystaldba/postgres-mcp` image.
 
-### Phase B – Compose Definition
-1. Draft `docker-compose.yml` under `gateway/` with services:
-   - `litellm`: image pinned to `v1.77.3-stable`, command `litellm --config /app/config/config.yaml --detailed_debug`
-   - Add explicit `user: "1000:1000"` if file permissions required
-   - Mount config directory read-only
-   - `env_file: /home/administrator/secrets/mcp-gateway.env`
-   - Logging driver `json-file` with rotation (max-size 20m, max-file 5)
-2. Define external networks:
+### Phase B – LiteLLM Docker Compose (`/home/administrator/projects/litellm/docker-compose.yml`)
+```yaml
+version: "3.9"
+
+services:
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:v1.77.3-stable
+    container_name: litellm-proxy
+    restart: unless-stopped
+    command: ["--config", "/app/config/config.yaml", "--detailed_debug"]
+    env_file: /home/administrator/secrets/litellm.env
+    volumes:
+      - ./config:/app/config:ro
+    ports:
+      - "4000:4000"
+    networks:
+      - traefik-proxy
+      - postgres-net
+      - litellm-mcp-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # Optional dedicated Postgres for LiteLLM metadata
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${LITELLM_DB_USER}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_DB: litellm_db
+    volumes:
+      - litellm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER} -d litellm_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - litellm-mcp-net
+```
+Add external network declarations and optional volume:
+```yaml
+networks:
+  traefik-proxy:
+    external: true
+  postgres-net:
+    external: true
+  litellm-mcp-net:
+    driver: bridge
+
+volumes:
+  litellm_pgdata:
+```
+If relying on shared Postgres, omit `litellm-db` service and ensure `DATABASE_URL` points to existing server on `postgres-net`.
+
+### Phase C – LiteLLM Configuration (`config/config.yaml`)
+```yaml
+litellm_settings:
+  master_key: ${LITELLM_MASTER_KEY}
+  database_url: ${DATABASE_URL}
+  json_logs: true
+  mcp_aliases:
+    db: db_main
+
+general_settings:
+  detailed_debug: true
+
+model_list:
+  - model_name: gpt-4o-mock
+    litellm_params:
+      model: mock-response
+      api_key: mock
+
+virtual_keys:
+  - api_key: ${LITELLM_VIRTUAL_KEY_TEST}
+    models: ["gpt-4o-mock"]
+    mcp_servers: ["db"]
+
+mcp_servers:
+  db_main:
+    transport: sse
+    url: http://mcp-postgres:8686
+    api_keys: [${LITELLM_VIRTUAL_KEY_TEST}]
+    description: "PostgreSQL metadata + health tooling"
+    health_check: /health
+```
+Add stubs for future HTTP/stdio services with comments referencing Section 4 patterns.
+
+### Phase D – MCP Connector Deployment (Example: Postgres)
+1. In `/home/administrator/projects/mcp/postgres/docker-compose.yml`:
    ```yaml
+   version: "3.9"
+
+   services:
+     mcp-postgres:
+       image: crystaldba/postgres-mcp:latest
+       container_name: mcp-postgres
+       restart: unless-stopped
+       env_file:
+         - /home/administrator/secrets/mcp-postgres.env
+       environment:
+         MCP_TRANSPORT: sse
+         MCP_PORT: 8686
+         MCP_ALLOW_WRITE: "false"
+       ports:
+         - "48010:8686"
+       networks:
+         - litellm-mcp-net
+         - postgres-net
+       healthcheck:
+         test: ["CMD-SHELL", "curl -fsS http://localhost:8686/health || exit 1"]
+         interval: 15s
+         timeout: 5s
+         retries: 5
+         start_period: 20s
+
    networks:
-     traefik-proxy:
+     litellm-mcp-net:
        external: true
      postgres-net:
        external: true
-     mcp-gateway-net:
-       driver: bridge
    ```
-3. If dedicated Postgres desired, include `postgres` service with `depends_on`, healthcheck, volume
-4. Add baseline MCP connector (`mcp-postgres`) service:
-   - Image `crystaldba/postgres-mcp:latest`
-   - Environment `MCP_TRANSPORT=sse`, `MCP_PORT=8686`, `DATABASE_URI=${MCP_POSTGRES_URL}`
-   - Expose host port `48010:8686` (LAN testing); join `mcp-gateway-net` and `postgres-net`
-   - Healthcheck calling `curl -f http://localhost:8686/health || exit 1`
-5. For each future MCP, replicate pattern with unique alias, container, env vars, and ports
+2. Create `/home/administrator/secrets/mcp-postgres.env` containing `DATABASE_URI=postgresql://...` (read-only credentials preferred) and set permissions `chmod 600 /home/administrator/secrets/mcp-postgres.env`.
+3. Document service details in `/home/administrator/projects/mcp/postgres/CLAUDE.md` once operational.
 
-### Phase C – LiteLLM Configuration (`config/config.yaml`)
-- Structure:
-  ```yaml
-  litellm_settings:
-    master_key: ${LITELLM_MASTER_KEY}
-    database_url: ${DATABASE_URL}
-    json_logs: true
-    mcp_aliases:
-      db: mcp_postgres
-  general_settings:
-    detailed_debug: true
-  model_list:
-    - model_name: gpt-4o-mock
-      litellm_params:
-        model: mock-response
-        api_key: dummy
-  virtual_keys:
-    - api_key: ${VIRTUAL_KEY_TEST}
-      models: ["gpt-4o-mock"]
-      mcp_servers: ["db"]
-  mcp_servers:
-    mcp_postgres:
-      transport: sse
-      url: http://mcp-postgres:8686
-      api_keys: [${VIRTUAL_KEY_TEST}]
-      description: "PostgreSQL read tooling"
-      health_check: /health
-  ```
-- Document difference between `virtual_keys[].mcp_servers` (limits exposure) vs header-based selection
-- Add placeholders for future `stdio` or `http` entries (see Section 6)
-- Include comments referencing `AINotes/codingstandards.md` for secret locations
-
-### Phase D – Deployment & Verification
-1. `docker compose pull` (ensures images cached before first run)
-2. `docker compose up -d`
-3. Verify container health:
-   - `docker compose ps`
-   - `docker compose logs litellm --tail 100`
-4. Confirm LiteLLM API responding:
+### Phase E – Deployment & Verification
+0. **Create shared network:** `docker network create litellm-mcp-net` (safe to rerun; Docker will warn if it already exists).
+1. Pull images: `docker compose pull` within both `projects/litellm` and each MCP directory.
+2. Start MCP connectors first (e.g., `docker compose up -d` inside `projects/mcp/postgres`).
+3. Start LiteLLM: `docker compose up -d` inside `projects/litellm`.
+4. Validate container health:
+   ```bash
+   docker compose ps
+   docker compose logs litellm-proxy --tail 100
+   ```
+5. Confirm tool discovery:
    ```bash
    curl -s http://linuxserver.lan:4000/v1/models \
-     -H "Authorization: Bearer ${VIRTUAL_KEY_TEST}" | jq '.data[].tools'
+     -H "Authorization: Bearer ${LITELLM_VIRTUAL_KEY_TEST}" | jq '.data[] | select(.id=="gpt-4o-mock").tools'
    ```
-   Expect tool metadata array for `db`
-5. Validate MCP tool call via `/v1/responses` (preferred API for tool use):
+6. Verify MCP server registration explicitly:
+   ```bash
+   curl -s http://linuxserver.lan:4000/v1/models \
+     -H "Authorization: Bearer ${LITELLM_VIRTUAL_KEY_TEST}" \
+     -H "x-mcp-servers: db" | jq '.data[] | select(.id=="gpt-4o-mock").mcp_servers'
+   ```
+7. Test MCP call via `/v1/responses` (preferred for tool execution):
    ```bash
    curl -s http://linuxserver.lan:4000/v1/responses \
-     -H "Authorization: Bearer ${VIRTUAL_KEY_TEST}" \
+     -H "Authorization: Bearer ${LITELLM_VIRTUAL_KEY_TEST}" \
      -H "Content-Type: application/json" \
      -H "x-mcp-servers: db" \
      -d '{
        "model": "gpt-4o-mock",
-       "input": [{"role": "user", "content": [{"type": "text", "text": "List schemas"}]}]
+       "input": [{"role": "user", "content": [{"type": "text", "text": "List schemas."}]}]
      }' | jq
    ```
-6. Expect `tool_calls` referencing MCP functions; confirm LiteLLM logs persist in Postgres (`litellm_logs` table)
-7. Integrate with Open WebUI or Codex CLI by pointing to `http://linuxserver.lan:4000/v1` and including `x-mcp-servers` header
+8. Verify LiteLLM persisted log entry in Postgres (`SELECT model, user_id, request_tags->'tool_calls' FROM litellm_logs ORDER BY start_time DESC LIMIT 5;`).
 
-### Phase E – Observability, Backups, Hardening
-- Enable Promtail scrape by adding labels `logging=enabled` and `com.docker.compose.project=mcp-gateway`
-- Create Grafana dashboard using LiteLLM logs (request count, tool usage)
-- Schedule nightly dump of LiteLLM Postgres schema using existing `/home/administrator/projects/postgres/backupdb.sh litellm_db`
-- Optionally front LiteLLM with Traefik + OAuth2 proxy using Keycloak once LAN testing succeeds; follow pattern in `AINotes/security.md`
-- Define maintenance runbook in `gateway/README.md` covering upgrades, scaling connectors, and log rotation
+### Phase F – Client Integration
+- **Claude Code CLI / Gemini CLI / ChatGPT Codex CLI:** Point `api_base` to `http://linuxserver.lan:4000/v1`, include `Authorization: Bearer <virtual key>` and `x-mcp-servers` header.
+- **Open WebUI:** Configure OpenAI-compatible backend using LiteLLM endpoint; ensure environment allows custom headers for MCP usage.
+- **VS Code (MCP extension):** Add LiteLLM entry in `mcp.json` referencing LAN URL and key.
+- Document connection instructions in `/home/administrator/projects/litellm/README.md`.
+
+### Phase G – Observability, Backups, Hardening
+- Promtail auto-discovers containers; ensure labels `logging=enabled` and `project=litellm`.
+- Add Grafana dashboard for LiteLLM metrics (request count, latency, tool usage) using Loki queries.
+- Backup LiteLLM Postgres schema nightly with existing scripts (`/home/administrator/projects/postgres/backupdb.sh litellm_db`).
+- Plan future Traefik/OAuth2 proxy integration (Keycloak) once LAN-only testing is complete.
+- Rotate virtual keys periodically; document rotation procedure in `litellm/README.md`.
 
 ## 6. Protocol Recipes & Patterns
-
-### 6.1 SSE MCP Container Template
-```yaml
-services:
-  mcp-filesystem:
-    image: ghcr.io/modelcontextprotocol/server-filesystem:latest
-    environment:
-      MCP_TRANSPORT: sse
-      MCP_PORT: 8690
-      MCP_ALLOWED_PATHS: /data/shared
-    networks:
-      - mcp-gateway-net
-    ports:
-      - "48020:8690"
-```
-- Register in LiteLLM:
-  ```yaml
-  mcp_servers:
-    mcp_filesystem:
-      transport: sse
-      url: http://mcp-filesystem:8690
-      allowed_hosts: ["*.linuxserver.lan"]
-  ```
-
-### 6.2 HTTP MCP Example
-- Some MCP services expose pure HTTP endpoints (rare today). For those:
-  ```yaml
-  mcp_servers:
-    mcp_monitoring:
-      transport: http
-      url: http://mcp-monitoring:8700
-      auth_type: bearer_token
-      auth_value: ${MCP_MONITORING_TOKEN}
-  ```
-- Ensure container presents `/health` endpoint for readiness; use Traefik middleware if later exposed externally
-
-### 6.3 Stdio MCP (Local-only)
-- Package binary inside LiteLLM container via `Dockerfile` overlay or bind mount a tools directory
-- Example entry:
-  ```yaml
-  mcp_servers:
-    mcp_toolshed:
-      transport: stdio
-      command: "/opt/mcp-toolshed/bin/start"
-      args: ["--mode", "cli"]
-      env:
-        TOOLS_ROOT: /opt/mcp-toolshed
-      allowed_paths:
-        - /home/administrator/projects/shared
-  ```
-- Best practice: keep stdio usage minimal; if tool needs network or file access beyond LiteLLM container, wrap it in its own SSE server instead
-- Add watchdog script to restart LiteLLM if stdio process exits unexpectedly
+- **SSE Template:** Provided in Phase D.
+- **HTTP Template:** See Section 4 examples; ensure MCP server exposes `/health`.
+- **Stdio Template:** Package tool binaries within `/home/administrator/projects/litellm/tools`; update Docker image via overlay or bind mount. Keep usage minimal; prefer SSE wrappers for better isolation.
 
 ## 7. Expansion Roadmap
-1. **Add more MCP connectors** (filesystem, fetch, n8n, timescaledb) following Section 6; document each in respective `/home/administrator/projects/mcp/<service>/CLAUDE.md`
-2. **Promote from mock model** to real LLM endpoints once tool pipeline validated; update `model_list` with provider-specific keys stored in secrets file
-3. **Traefik integration**: add labels for `litellm.linuxserver.lan` internal hostname, optional Keycloak-protected route for remote access
-4. **High availability**: if demand grows, run LiteLLM replicas behind Traefik load balancer using shared Postgres + Redis for rate limits
-5. **Security hardening**: enable IP allowlists on LiteLLM, rotate virtual keys, consider mutual TLS for MCP connectors if they move off-host
-6. **Documentation**: update `/home/administrator/projects/AINotes/SYSTEM-OVERVIEW.md` and create `gateway/CLAUDE.md` after first successful deployment per coding standards
+1. Deploy additional MCP services (`filesystem`, `fetch`, `n8n`, `timescaledb`). Each gets its own directory, Compose file, secrets, and LiteLLM `mcp_servers` entry.
+2. Replace mock model with real providers once tool pipeline validated; add provider API keys to `litellm.env` and extend `model_list`.
+3. Add Traefik labels to LiteLLM container for `litellm.linuxserver.lan` hostname and optional OAuth2 proxy for authenticated external access.
+4. Evaluate LiteLLM rate limiting, quotas, and Redis caching if usage increases.
+5. Update AINotes docs (`SYSTEM-OVERVIEW.md`, `network.md`, `security.md`) post-deployment per coding standards.
 
 ## 8. Risks and Open Questions
-- **Version availability:** Confirm `ghcr.io/berriai/litellm:v1.77.3-stable` exists before deployment; fallback to latest `*-stable` if not published, document variance
-- **Docker permissions:** Current CLI session lacks Docker socket access; ensure final deployment is executed by an administrator account with proper permissions
-- **Database choice:** Decide between shared Postgres versus dedicated instance; shared reduces footprint but needs schema isolation and monitoring
-- **Auth strategy for clients:** LAN-only now, but plan for API key rotation and potential Keycloak/OAuth layer when exposing beyond trusted hosts
-- **MCP connector maturity:** Some community MCP servers may lack health endpoints or robust auth; vet each before production use
+- **Image availability:** Verify `ghcr.io/berriai/litellm:v1.77.3-stable` exists; fall back to latest `*-stable` if necessary and capture variance in docs.
+- **Permission boundaries:** Current CLI lacks Docker socket access; final deployment must be run with appropriate privileges.
+- **Database sharing vs isolation:** Decide whether LiteLLM uses shared cluster or dedicated container; document rationale.
+- **Client header support:** Ensure each client (e.g., Open WebUI) can send `x-mcp-servers`; may require middleware updates.
+- **MCP connector maturity:** Some community MCP containers may lack full health endpoints or fine-grained auth—evaluate before production adoption.
 
 ## Executive Summary
-Use a new `mcp-gateway` project to deploy LiteLLM v1.77.3 via Docker Compose, anchored to existing LAN infrastructure and Postgres. Prefer SSE transport by running each MCP server in its own container, reserving HTTP for MCPs that natively expose it and stdio only for truly local tools bundled with LiteLLM. Configure LiteLLM with `mcp_servers` entries, scoped virtual keys, and JSON logging, then validate tool discovery and execution with `/v1/responses` calls. Once baseline is proven, expand connectors, integrate with observability and Traefik, and document everything per established AINotes standards.
+Community analysis identifies the LiteLLM Proxy as the most robust, widely supported MCP gateway for your LAN environment. Deploy LiteLLM v1.77.3-stable from `/home/administrator/projects/litellm`, attach it to per-service MCP containers located under `/home/administrator/projects/mcp/{service}`, and standardize on SSE transport while documenting HTTP/stdio fallbacks. Configure LiteLLM’s `mcp_servers` with scoped virtual keys, validate functionality using `/v1/responses`, and integrate with local clients (Claude Code, Gemini CLI, ChatGPT Codex CLI, Open WebUI, VS Code). Once the baseline works, expand connectors, fold LiteLLM into observability/backup routines, and prepare Traefik + Keycloak hardening for broader network use.
