@@ -1,0 +1,642 @@
+=== CLAUDE
+# Comprehensive MCP Server Registration with LiteLLM v1.77.3-stable
+
+## Configuration syntax for stdio, HTTP, and SSE servers
+
+LiteLLM v1.77.3-stable uses a unified configuration structure in `config.yaml` with **two primary blocks** under `litellm_settings`:
+
+### Core Configuration Structure
+
+```yaml
+litellm_settings:
+  # Server definitions
+  mcp_servers:
+    # HTTP Streamable Server
+    http_server:
+      url: "https://api.example.com/mcp"
+      transport: "http"  # Explicit HTTP transport
+      auth_type: "api_key"
+      spec_version: "2025-03-26"
+      
+    # SSE (Server-Sent Events) Server - Default transport
+    sse_server:
+      url: "https://actions.zapier.com/mcp/sk-xxxxx/sse"
+      transport: "sse"  # Optional, SSE is default
+      
+    # Standard Input/Output (stdio) Server
+    stdio_server:
+      transport: "stdio"
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/path"]
+      env:
+        API_KEY: "your-api-key"
+        
+  # Alias mapping for friendly names
+  mcp_aliases:
+    "files": "stdio_server"
+    "zapier": "sse_server"
+    "api": "http_server"
+```
+
+**Key discovery**: There is **no `mcp_tools` configuration block** - tools are automatically discovered from configured servers. The `mcp_settings` block mentioned in some documentation refers to the broader `litellm_settings` section.
+
+## Common pitfalls and troubleshooting for registration failures
+
+### Most frequent issues and solutions
+
+**1. Stdio "No such file or directory" Error (Issue #13650)**
+- **Cause**: Missing executables in Docker containers
+- **Solution**: Ensure all dependencies are installed in container
+```yaml
+# Working stdio configuration
+mcp_servers:
+  circleci_mcp:
+    transport: "stdio"
+    command: "docker"
+    args: ["exec", "-i", "mcp-container", "npx", "-y", "@circleci/mcp-server"]
+    env:
+      CIRCLECI_TOKEN: "your-token"
+```
+
+**2. Docker Network Resolution Issues (Issue #13132)**
+- **Problem**: Container names not resolving within Docker networks
+- **Solution**: Use explicit network configuration
+```yaml
+services:
+  litellm:
+    networks:
+      - litellm_network
+  mcp-server:
+    networks:
+      - litellm_network
+```
+
+**3. Configuration Syntax Errors**
+- **Wrong**: JSON-style configuration
+- **Correct**: YAML format under `mcp_servers` block
+
+**4. Authentication Header Format**
+- **Deprecated**: `x-mcp-auth`
+- **Recommended**: `x-mcp-{server_alias}-{header_name}`
+
+## Docker containerization approaches
+
+### Complete Docker Compose Setup
+
+```yaml
+version: "3.9"
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm-database:main-stable
+    container_name: litellm-proxy
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_MASTER_KEY=sk-1234
+      - DATABASE_URL=postgresql://litellm:password@postgres:5432/litellm
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--detailed_debug"]
+    networks:
+      - litellm_network
+    depends_on:
+      - postgres
+      - mcp-memory
+
+  # SSE MCP Server Example
+  mcp-memory:
+    image: oven/bun:1
+    container_name: mcp-memory-server
+    command: ["bunx", "mcp-proxy", "--port", "8080", "--shell", "bunx", "mcp-knowledge-graph"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - mcp_memory_data:/data
+    networks:
+      - litellm_network
+
+  # stdio MCP Server Requirements
+  mcp-stdio:
+    image: python:3.11-slim
+    stdin_open: true  # Required for stdio
+    tty: true        # Required for stdio
+    networks:
+      - litellm_network
+
+networks:
+  litellm_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mcp_memory_data:
+```
+
+**Critical for stdio servers in Docker**:
+- Set `stdin_open: true` and `tty: true`
+- Use `docker exec -i` for command execution
+- Ensure all dependencies available in container
+
+## Network configuration for LAN access on linuxserver.lan
+
+### LAN-Accessible Configuration
+
+```yaml
+# For linuxserver.lan domain access
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_HOST=0.0.0.0  # Accept external connections
+    labels:
+      # Traefik reverse proxy for domain access
+      - "traefik.enable=true"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.linuxserver.lan`)"
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+    networks:
+      - litellm_bridge
+
+networks:
+  litellm_bridge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: "0.0.0.0"
+```
+
+### DNS Resolution Setup
+```bash
+# Host network mode for direct LAN access
+network_mode: "host"
+environment:
+  - LITELLM_HOST=192.168.1.100  # Specific LAN IP
+  - LITELLM_PORT=4000
+```
+
+## Working PostgreSQL MCP server configurations
+
+### Recommended: Postgres MCP Pro (crystaldba/postgres-mcp)
+
+The official `modelcontextprotocol/servers postgres` is **archived**. Use Postgres MCP Pro instead:
+
+**Development Mode (Full Access)**:
+```yaml
+mcp_servers:
+  postgres_dev:
+    transport: "stdio"
+    command: "docker"
+    args: [
+      "run", "-i", "--rm",
+      "-e", "DATABASE_URI",
+      "crystaldba/postgres-mcp",
+      "--access-mode=unrestricted"
+    ]
+    env:
+      DATABASE_URI: "postgresql://user:password@localhost:5432/devdb"
+    description: "PostgreSQL with full access"
+```
+
+**Production Mode (Restricted)**:
+```yaml
+mcp_servers:
+  postgres_prod:
+    transport: "stdio"
+    command: "postgres-mcp"
+    args: ["--access-mode=restricted"]
+    env:
+      DATABASE_URI: "postgresql://readonly:pass@db.example.com:5432/prod?sslmode=require"
+    description: "Read-only PostgreSQL access"
+```
+
+**Key features of Postgres MCP Pro**:
+- Performance analysis and query optimization
+- Database health monitoring
+- Index tuning recommendations
+- Configurable access modes
+- Required extensions: `pg_stat_statements`, `hypopg`
+
+## How LiteLLM handles MCP server discovery and tool translation
+
+### Discovery and Translation Process
+
+1. **Automatic Tool Discovery**: LiteLLM fetches available tools from each configured MCP server at startup
+2. **OpenAI Format Translation**: Tools are converted to OpenAI-compatible function definitions
+3. **Alias Prefixing**: Tool names prefixed with server aliases for uniqueness
+4. **Dynamic Registration**: No manual tool definition required
+
+### Tool Execution Flow
+
+```python
+# 1. LiteLLM discovers tools from MCP servers
+tools = await mcp_server.list_tools()
+
+# 2. Converts to OpenAI format
+openai_tools = convert_to_openai_format(tools)
+
+# 3. LLM receives tools with user query
+response = llm.complete(messages, tools=openai_tools)
+
+# 4. LiteLLM routes tool calls back to appropriate MCP server
+result = await mcp_server.execute_tool(tool_name, arguments)
+```
+
+### Access Control Methods
+
+**URL-based Namespacing**:
+```
+/mcp/github           # Single server
+/mcp/github,zapier    # Multiple servers
+/mcp/dev_group        # Access group
+```
+
+**Header-based Namespacing**:
+```
+x-mcp-servers: "github,zapier,deepwiki"
+```
+
+## Authentication and security best practices
+
+### OAuth 2.1 Implementation
+
+```python
+async def get_oauth_token(self) -> str:
+    current_time = time.time()
+    # 60-second buffer for token expiration
+    if self.access_token and current_time < self.token_expires_at - 60:
+        return self.access_token
+    
+    # Refresh token
+    response = await self.http_client.post(
+        self.oauth_config['token_url'],
+        data={
+            'grant_type': 'client_credentials',
+            'client_id': self.oauth_config['client_id'],
+            'client_secret': self.oauth_config['client_secret']
+        }
+    )
+```
+
+### Server-Specific Authentication Headers
+
+```yaml
+# Recommended approach
+headers:
+  x-mcp-github-authorization: "Bearer ghp_xxxxxxxxx"
+  x-mcp-zapier-x-api-key: "sk-xxxxxxxxx"
+  x-mcp-postgres-password: "secure_password"
+```
+
+### Guardrails Integration
+
+```yaml
+guardrails:
+  - guardrail_name: "mcp-input-validation"
+    litellm_params:
+      guardrail: presidio
+      mode: "pre_mcp_call"
+      pii_entities_config:
+        CREDIT_CARD: "BLOCK"
+        EMAIL_ADDRESS: "MASK"
+```
+
+### Security Checklist
+- ✅ Use TLS/SSL for all HTTP/SSE connections
+- ✅ Implement JWT signature verification
+- ✅ Validate token scopes against required permissions
+- ✅ Run MCP servers in sandboxed environments
+- ✅ Enable PII detection and masking
+- ✅ Use restricted access modes in production
+
+## Testing procedures to verify registration and tool availability
+
+### MCP Inspector Testing
+
+```bash
+# Local testing with Inspector
+npx @modelcontextprotocol/inspector node server.js
+
+# Test published MCP packages
+npx -y @modelcontextprotocol/inspector npx @modelcontextprotocol/server-filesystem /path
+
+# Docker testing
+docker run --rm -p 6274:6274 ghcr.io/modelcontextprotocol/inspector:latest
+```
+
+### API Testing
+
+```bash
+# List available tools
+curl -X GET 'http://localhost:4000/mcp/list_tools' \
+  -H 'x-litellm-api-key: Bearer sk-1234' \
+  -H 'x-mcp-servers: github,zapier'
+
+# Execute tool
+curl -X POST 'http://localhost:4000/mcp/call_tool' \
+  -H 'Content-Type: application/json' \
+  -H 'x-litellm-api-key: Bearer sk-1234' \
+  -d '{
+    "name": "get_file",
+    "server_name": "filesystem",
+    "arguments": {"path": "/test.txt"}
+  }'
+```
+
+### Testing Workflow
+1. **Connection Test**: Verify server starts successfully
+2. **Tool Discovery**: Confirm all expected tools are listed
+3. **Execution Test**: Run each tool with valid parameters
+4. **Error Handling**: Test with invalid inputs
+5. **Performance Test**: Monitor `x-litellm-overhead-duration-ms` header
+
+## Configuration block differences
+
+### mcp_servers vs mcp_aliases
+
+**`mcp_servers`**: Primary block for defining MCP server connections
+- Contains server URL, transport type, authentication
+- Each server has unique configuration
+- Supports stdio, HTTP, and SSE transports
+
+**`mcp_aliases`**: Maps friendly names to server definitions
+- Simplifies tool references
+- Enables cleaner access control
+- Used in URL namespacing
+
+**Note**: There is **no `mcp_tools` block** in current LiteLLM architecture. Tools are discovered automatically from servers, not defined separately.
+
+### Access Groups Configuration
+
+```yaml
+mcp_servers:
+  server_one:
+    url: "https://api1.example.com/mcp"
+    access_groups: ["dev_group", "production_group"]
+  
+  server_two:
+    url: "https://api2.example.com/mcp"
+    access_groups: ["dev_group"]
+```
+
+## Wrapper scripts and proxy containers for stdio servers
+
+### Community Solutions
+
+**1. MCP Proxy Pattern (Recommended)**
+```yaml
+# Wrapper container for stdio MCP servers
+mcp-wrapper:
+  image: oven/bun:1
+  command: ["bunx", "mcp-proxy", "--port", "8080", "--shell", "bunx", "mcp-knowledge-graph"]
+  ports:
+    - "8080:8080"
+```
+
+**2. Direct Execution Pattern**
+```yaml
+mcp_servers:
+  stdio_direct:
+    transport: "stdio"
+    command: "docker"
+    args: ["exec", "-i", "mcp-container", "python", "mcp_server.py"]
+```
+
+**3. Community Wrapper Projects**:
+- `itsDarianNgo/mcp-server-litellm`: Text completion wrapper
+- `mNandhu/mcp-via-litellm`: Protocol-level CLI wrapper
+- `dinhdobathi1992/mcp-server-litellm`: Production-ready wrapper with connection pooling
+
+### Stdio Handling Requirements
+
+**Container Requirements**:
+- `stdin_open: true` and `tty: true` in Docker Compose
+- Process management capabilities
+- All dependencies available in container
+- Proper environment variable passing
+
+**Best Practice**: Convert stdio servers to HTTP/SSE when possible for better reliability and easier containerization. If stdio is required, use wrapper containers that expose HTTP/SSE endpoints.
+
+## Key Recommendations
+
+1. **Use Latest Stable Version**: v1.77.3-stable builds on v1.74.x MCP features with improved stdio support
+2. **Prefer SSE/HTTP over stdio**: Better for containerization and network access
+3. **Implement Server-Specific Auth**: Use `x-mcp-{server}-{header}` pattern
+4. **Test with MCP Inspector**: Validate servers before production deployment
+5. **Use Postgres MCP Pro**: Official PostgreSQL server is archived
+6. **Enable Detailed Debugging**: Use `--detailed_debug` flag during setup
+7. **Monitor Performance**: Track `x-litellm-overhead-duration-ms` header
+8. **Implement Cost Tracking**: Configure per-tool costs for budget management
+9. **Use Access Groups**: Simplify permission management at scale
+10. **Container Best Practices**: Always set `stdin_open` and `tty` for stdio servers
+
+This comprehensive guide provides everything needed to successfully register and operate MCP servers with LiteLLM v1.77.3-stable, from basic configuration to advanced troubleshooting and security considerations.
+
+==== chatgpt
+
+Got it—let’s lock down **how to register MCP servers to LiteLLM (v1.77.3-stable)** for **stdio**, **SSE**, and **HTTP** without modifying your MCPs (Docker wrappers are 👍). Below are the **battle-tested patterns**, pitfalls to avoid, and a **ready LAN recipe** for your `mcp-postgresql`.
+
+---
+
+# Best practices: registering MCP servers to LiteLLM
+
+## 1) STDIO (local child process)
+
+**When to use:** only when the MCP binary/script is on the same host/inside the same container as LiteLLM. Great for quick dev; awkward if you want each MCP in its own Docker container.
+
+**Config shape (LiteLLM `config.yaml`):**
+
+```yaml
+mcp_servers:
+  mcp_postgresql:
+    transport: "stdio"
+    command: "npx"
+    args: ["-y", "@vendor/some-postgres-mcp"]  # or your local script/binary
+    env:
+      DATABASE_URI: "postgresql://user:pass@host:5432/db"
+```
+
+**Notes & gotchas**
+
+* `mcp_servers` (not `mcp_settings`) is the correct key; `transport: stdio` requires `command` (and optional `args`, `env`). ([LiteLLM][1])
+* If LiteLLM runs in Docker and the MCP is in a **different** container, stdio won’t reach it. Either mount the MCP code **into** the LiteLLM container or prefer SSE/HTTP. ([LiteLLM][1])
+* You *can* launch a container via stdio by making LiteLLM run `docker run -i …` so STDIN/STDOUT stream through (example pattern shown in community docs/blogs). ([jamesmcm.github.io][2])
+
+---
+
+## 2) SSE (Server-Sent Events) – **recommended for LAN + Docker**
+
+**When to use:** the MCP runs in its **own container** (your preference), and you want one LiteLLM to reach many MCPs over the LAN.
+
+**Config shape (LiteLLM `config.yaml`):**
+
+```yaml
+mcp_servers:
+  mcp_postgresql:
+    url: "http://linuxserver.lan:48000/sse"
+    transport: "sse"     # explicit; default is sse, but be clear
+    description: "Postgres via CrystalDBA/Postgres MCP"
+```
+
+**Notes & gotchas**
+
+* SSE and HTTP are first-class transports in LiteLLM’s MCP gateway. ([LiteLLM][1])
+* Many community servers (e.g., **CrystalDBA/postgres-mcp**) officially document `--transport=sse` and expose `/sse`. Map that port and point LiteLLM at it. ([GitHub][3])
+* Use **aliases** to keep tool prefixes clean:
+
+```yaml
+litellm_settings:
+  mcp_aliases:
+    db: mcp_postgresql
+```
+
+This yields tool names like `db_list_tables` instead of long server names. ([LiteLLM][1])
+
+* You can **restrict** what the LLM sees per request with the `x-mcp-servers` header (or via URL namespacing). This prevents tool overload and is great for security segmentation. ([LiteLLM][1])
+
+---
+
+## 3) Streamable **HTTP** (when the server supports it)
+
+**When to use:** the MCP explicitly implements **HTTP** transport (fewer do today than SSE).
+
+**Config shape (LiteLLM `config.yaml`):**
+
+```yaml
+mcp_servers:
+  my_http_mcp:
+    url: "http://linuxserver.lan:48001/mcp"  # server-specific path
+    transport: "http"
+    auth_type: "bearer_token"                # or api_key/basic/authorization
+    auth_value: "abc123"
+```
+
+* Valid transports: `sse`, `http`, `stdio`; `auth_type` maps to the right header automatically. ([LiteLLM][1])
+* If your chosen MCP doesn’t implement HTTP, keep SSE. Converting SSE→HTTP via a separate gateway is possible but adds moving parts (not needed for your “simple LAN” goal). ([LiteLLM][1])
+
+---
+
+# LAN-focused, minimal recipe for **mcp-postgresql**
+
+> Uses **Docker** for the MCP (no code changes), **SSE** for clean LAN access, and LiteLLM v1.77.3-stable as your gateway. If the tag isn’t published yet, fallback to the latest `*-stable` (e.g., v1.77.2-stable).
+
+### A) Run the Postgres MCP (CrystalDBA) via SSE
+
+```bash
+# Expose SSE on linuxserver.lan:48000
+docker run -d --name mcp-postgresql \
+  -p 48000:8000 \
+  -e DATABASE_URI="postgresql://user:pass@postgres:5432/dbname" \
+  crystaldba/postgres-mcp \
+  --access-mode=restricted \
+  --transport=sse
+```
+
+(They document `--transport=sse` and `/sse` path.) ([GitHub][3])
+
+### B) LiteLLM `config.yaml` (v1.77.3-stable target)
+
+```yaml
+model_list:
+  - model_name: local-mock
+    litellm_params:
+      model: "mock-response"
+      api_key: "any"
+
+litellm_settings:
+  mcp_aliases:
+    db: mcp_postgresql
+
+# register the MCP
+mcp_servers:
+  mcp_postgresql:
+    url: "http://linuxserver.lan:48000/sse"
+    transport: "sse"
+    description: "Postgres tools over SSE"
+
+# give a test virtual key
+virtual_keys:
+  - api_key: "test-key-1234"
+    models: ["local-mock"]
+```
+
+Schema and examples match LiteLLM’s MCP docs. ([LiteLLM][1])
+
+### C) Run LiteLLM on your LAN
+
+```bash
+docker run -d --name mcp-litellm \
+  -p 4000:4000 \
+  -v /home/administrator/projects/mcp/litellm/config/config.yaml:/app/config.yaml \
+  ghcr.io/berriai/litellm:litellm_stable_release_branch-v1.77.3-stable \
+  --config /app/config.yaml \
+  --master_key sk-local-admin
+```
+
+(Use the exact `*-stable` tag available; v1.76.1-stable is documented publicly—replace with 1.77.3-stable when present.) ([New Releases][4])
+
+### D) Quick verification (lists & calls tools through LiteLLM MCP gateway)
+
+LiteLLM exposes an MCP gateway that converts MCP tools to OpenAI-style tools and serves them via **/v1/responses**:
+
+```bash
+curl -s http://linuxserver.lan:4000/v1/responses \
+  -H "Authorization: Bearer test-key-1234" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "local-mock",
+    "input": [{"role":"user","type":"message","content":"List DB tables"}],
+    "tools": [{
+      "type": "mcp",
+      "server_label": "litellm",
+      "server_url": "litellm_proxy",
+      "require_approval": "never",
+      "headers": { "x-mcp-servers": "db" }   // only expose the db MCP
+    }],
+    "tool_choice": "required",
+    "stream": false
+  }'
+```
+
+That request pattern (with `server_url: "litellm_proxy"`, optional `x-mcp-servers`, and MCP conversion) is straight from the LiteLLM docs. ([LiteLLM][1])
+
+---
+
+## Extra tips that save hours
+
+* **Use aliases + header namespacing** (`x-mcp-servers`) to keep an LLM’s tool list **small & relevant** per call (prevents tool overload). ([LiteLLM][1])
+* **Per-server auth headers** from the client are supported (`x-mcp-{alias}-{header}`), e.g., `x-mcp-db-authorization: Bearer <token>`. Great for forwarding DB tokens without baking them into the config. ([LiteLLM][1])
+* **Auth in config** for SSE/HTTP servers: `auth_type: api_key|bearer_token|basic|authorization` with `auth_value` → LiteLLM sets the right header. ([LiteLLM][1])
+* **Keep stdio local.** If every MCP runs in its own container (your preference), **SSE is simpler** and more robust across the LAN than trying to pipe stdio through Docker. ([LiteLLM][1])
+
+---
+
+## Small corrections to your earlier draft
+
+* Use **`mcp_servers`** instead of `mcp_settings` in `config.yaml`. ([LiteLLM][1])
+* To **exercise tools**, use **`/v1/responses`** with the MCP block (not `/v1/models`). The docs show the exact request structure and how LiteLLM converts MCP tools to OpenAI-style functions. ([LiteLLM][1])
+
+---
+
+## Quick ask before I generate files
+
+Given your “LAN-only, each MCP in its own Docker” goal, I recommend we **standardize on SSE containers for all MCPs** and register them in `mcp_servers` as above. It avoids modifying MCP code, sidesteps stdio/Docker quirks, and keeps LiteLLM as a clean central gateway.
+
+**Shall I proceed with:**
+
+* a two-service `docker-compose.yml` (LiteLLM v1.77.3-stable + `mcp-postgresql` on port 48000),
+* the exact `/home/administrator/projects/mcp/litellm/config/config.yaml`, and
+* a one-shot `verify.sh` that runs the `/v1/responses` MCP test?
+
+(If `v1.77.3-stable` isn’t published yet, I’ll pin to the latest available `*-stable` and note it inline.) ([New Releases][4])
+
+If you’d rather **keep stdio** for `mcp-postgresql`, I can also wire the **`docker run -i` stdio pattern**—just say the word. ([jamesmcm.github.io][2])
+
+[1]: https://docs.litellm.ai/docs/mcp "/mcp - Model Context Protocol | liteLLM"
+[2]: https://jamesmcm.github.io/blog/claude-data-engineer/?utm_source=chatgpt.com "I made an AI Agent take an old Data Engineering test"
+[3]: https://github.com/crystaldba/postgres-mcp?utm_source=chatgpt.com "Postgres MCP Pro provides configurable read/write access ..."
+[4]: https://newreleases.io/project/github/BerriAI/litellm/release/v1.76.1-stable?utm_source=chatgpt.com "BerriAI/litellm v1.76.1-stable on GitHub"
+
+===== gemini
+
