@@ -1,0 +1,136 @@
+version: '3.8'
+
+networks:
+  mcp-internal:
+    driver: bridge
+    name: mcp-internal
+  traefik-proxy:
+    external: true
+  postgres-net:
+    external: true
+  loki-net:
+    name: loki-net
+    driver: bridge
+    external: false
+
+x-common-settings: &common
+  restart: unless-stopped
+  networks:
+    - mcp-internal
+    - traefik-proxy
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+      labels: "com.docker.compose.service,com.docker.compose.project"
+
+services:
+  # ============== Phase 2: Individual MCP Services with SSE ==============
+  
+  # MCP Monitoring Service (with SSE wrapper)
+  mcp-monitoring:
+    <<: *common
+    build:
+      context: ./compose/monitoring
+      dockerfile: Dockerfile.sse
+    container_name: mcp-monitoring
+    ports:
+      - "8501:8080"  # Monitoring on 8501
+    networks:
+      - mcp-internal
+      - loki-net
+      - traefik-proxy
+    environment:
+      - LOKI_URL=http://loki:3100
+      - NETDATA_URL=http://netdata:19999
+      - PORT=8080
+      - HOST=0.0.0.0
+    labels:
+      - "com.docker.compose.service=mcp-monitoring"
+      - "com.mcp.type=monitoring"
+      - "com.mcp.tools=5"
+      - "com.mcp.transport=sse"
+      - "com.mcp.phase=2"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # MCP Filesystem Service (with SSE wrapper)
+  mcp-filesystem:
+    <<: *common
+    build:
+      context: ./compose/filesystem
+      dockerfile: Dockerfile.sse
+    container_name: mcp-filesystem
+    ports:
+      - "8502:8080"  # Filesystem on 8502
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /workspace:/workspace:ro
+      - /home/administrator/projects:/projects:ro
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+    labels:
+      - "com.docker.compose.service=mcp-filesystem"
+      - "com.mcp.type=filesystem"
+      - "com.mcp.tools=11"
+      - "com.mcp.transport=sse"
+      - "com.mcp.phase=2"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ============== Phase 2 Preparation: Future Services ==============
+  
+  # Placeholder for mcp-memory (Phase 2.5)
+  # mcp-memory:
+  #   <<: *common
+  #   build:
+  #     context: ./compose/memory
+  #     dockerfile: Dockerfile
+  #   container_name: mcp-memory
+  #   ports:
+  #     - "8503:8080"
+  #   networks:
+  #     - mcp-internal
+  #     - postgres-net
+  #     - traefik-proxy
+  
+  # Placeholder for mcp-fetch (Phase 2.5)
+  # mcp-fetch:
+  #   <<: *common
+  #   build:
+  #     context: ./compose/fetch
+  #     dockerfile: Dockerfile
+  #   container_name: mcp-fetch
+  #   ports:
+  #     - "8504:8080"
+  
+  # Placeholder for mcp-postgres (Phase 2.5)
+  # mcp-postgres-service:
+  #   <<: *common
+  #   build:
+  #     context: ./compose/postgres
+  #     dockerfile: Dockerfile
+  #   container_name: mcp-postgres-service
+  #   ports:
+  #     - "8505:8080"
+  #   networks:
+  #     - mcp-internal
+  #     - postgres-net
+  #     - traefik-proxy
+
+# Volumes for future use
+volumes:
+  mcp-data:
+    name: mcp-data
+  mcp-sessions:
+    name: mcp-sessions
