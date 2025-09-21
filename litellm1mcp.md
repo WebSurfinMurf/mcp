@@ -1,7 +1,11 @@
 # Project Plan: Standalone LiteLLM MCP Gateway Deployment
 
 **Objective:** Deploy a standalone, internal-only LiteLLM proxy that acts as an MCP Gateway. This deployment will be simple, secure, and avoid external dependencies like Traefik and Keycloak. The initial focus is on integrating with the `mcp-postgres` service for tool-calling and using a PostgreSQL database for logging and auditing.
+I want to deploy best of breed, pre-defined MCP connector,propritize mcp tool selection that have material community support and adoption, if there is more than one with similiar adoption, choose the one aligned with the core project if one exists.
+Deploy mcp in  in respective directories. "projects/mcp/*" for postgresql "projects/mcp/postgresql" but name all assets at mcp-postgresql, like container or connector, etc.
 
+I want to register them to a central mcp server to make them all available via a single connection.
+I want the single central mcp server capability to be available on my linuxserver.lan for claude code cli, gemini cli, optionally chatgpt codex cli, open-webui, and vs code on a different machine on the local network.
 ---
 
 ## Phase 1: Environment Setup & Configuration
