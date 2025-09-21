@@ -1,3 +1,5 @@
+first read projects/AINotes/memoryfiles.md
+
 I have tried to deploy litellm with mcp gateway and failed multiple times. This time i want to simplify the deploy by sticking to LAN access on server linuxserver.lan. PLEASE do some deep digging on best practices to register an MCP server to litellm for stdio, http, and sse. I want to avoide altering litellm and downloaded mcp's, but if its more straight forward to do so, that is OK. PLEASE summarize why and ASK me first. I am very fine with each mcp runs in a docker container, i dont view that as modifying, but as a wrapper. Please keep this in mind when reading below. ALSO please target litellm v1.77.3-stable
 Below is soem requirements, a primer on litellm, and 3 different plans created by 3 different LLMS.
 What I want you to do is using your access to my linuxserver.lan that you are running on to look at my server and refine this plan.
