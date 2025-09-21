@@ -1,13 +1,18 @@
-I want to deploy best of breed, pre-defined MCP connectors for the services I currently have. 
+I have tried to deploy litellm with mcp gateway and failed multiple times. 
+This time i want to simplify the deploy by sticking to LAN access on server linuxserver.lan. 
+PLEASE do some deep digging on best practices to register an MCP server to litellm for stdio, http, and sse. I want to avoide altering litellm and downloaded mcp's, but if its more straight forward to do so, that is OK. 
+PLEASE summarize why and ASK me first. I am very fine with each mcp runs in a docker container, i dont view that as modifying, but as a wrapper. P
+lease keep this in mind when reading below. ALSO please target litellm v1.77.3-stable
 
-projects/mcp/fetch
-projects/mcp/playwright
-projects/mcp/timescaledb
-projects/mcp/n8n
-projects/mcp/minio
+litellm should be deployed at:
+projects/litellm
+
+the mcp's should be at:
+projects/mcp/{services}
+example:
 projects/mcp/postgres
 
-For these MCP,s propritize mcp tools that have material community support and adoption, if there is more than one with similiar adoption, choose the one aligned with the core project if one exists.
+For any MCP, propritize mcp tools that have material community support and adoption, if there is more than one with similiar adoption, choose the one aligned with the core project if one exists.
 I want all of them deployed locally in respective directories.
 
 I want to register them to a central mcp server to make them all available via a single connection.
