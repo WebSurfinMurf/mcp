@@ -1,0 +1,223 @@
+version: '3.8'
+
+services:
+  # Central orchestrator MCP server (existing with enhancements)
+  mcp-server:
+    image: python:3.11-slim-bookworm
+    container_name: mcp-server
+    restart: unless-stopped
+    ports:
+      - "8001:8000"  # Expose on host port 8001 for Claude Code bridge access
+    volumes:
+      - ./app:/app:ro
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             uvicorn main:app --host 0.0.0.0 --port 8000"
+    env_file:
+      - /home/administrator/secrets/mcp-server.env
+    environment:
+      # MCP microservice endpoints
+      - MCP_N8N_ENDPOINT=http://mcp-n8n:3000
+      - MCP_PLAYWRIGHT_ENDPOINT=http://mcp-playwright:8080
+      - MCP_TIMESCALEDB_ENDPOINT=http://mcp-timescaledb:8080
+    networks:
+      - traefik-proxy
+      - postgres-net
+      - litellm-net
+      - observability-net
+      - mcp-internal  # New internal network for MCP microservices
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      # Direct internal access (bypass OAuth2)
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      - "traefik.http.routers.mcp-server-direct.entrypoints=websecure"
+      - "traefik.http.routers.mcp-server-direct.rule=Host(`mcp.linuxserver.lan`)"
+      - "traefik.http.routers.mcp-server-direct.tls=true"
+      - "traefik.http.services.mcp-server-direct.loadbalancer.server.port=8000"
+
+  # OAuth2 proxy for external access (existing)
+  mcp-server-auth-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    container_name: mcp-server-auth-proxy
+    restart: unless-stopped
+    depends_on:
+      - mcp-server
+    networks:
+      - traefik-proxy
+      - keycloak-net
+    env_file:
+      - /home/administrator/secrets/mcp-server.env
+    environment:
+      # OAuth2 Proxy Configuration
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_PROVIDER=keycloak-oidc
+      - OAUTH2_PROXY_UPSTREAMS=http://mcp-server:8000
+
+      # Keycloak Integration
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=https://keycloak.ai-servicers.com/realms/main
+      - OAUTH2_PROXY_REDIRECT_URL=https://mcp.ai-servicers.com/oauth2/callback
+
+      # Authorization
+      - OAUTH2_PROXY_ALLOWED_GROUPS=administrators
+      - OAUTH2_PROXY_SCOPE=openid profile email groups
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*
+
+      # Security Settings
+      - OAUTH2_PROXY_COOKIE_SECURE=true
+      - OAUTH2_PROXY_COOKIE_HTTPONLY=true
+      - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+      - OAUTH2_PROXY_COOKIE_EXPIRE=24h
+
+      # OAuth2 credentials (from secrets file)
+      - OAUTH2_PROXY_CLIENT_ID=${OAUTH2_PROXY_CLIENT_ID}
+      - OAUTH2_PROXY_CLIENT_SECRET=${OAUTH2_PROXY_CLIENT_SECRET}
+      - OAUTH2_PROXY_COOKIE_SECRET=${OAUTH2_PROXY_COOKIE_SECRET}
+    labels:
+      # External authenticated access
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      - "traefik.http.routers.mcp-server.entrypoints=websecure"
+      - "traefik.http.routers.mcp-server.rule=Host(`mcp.ai-servicers.com`)"
+      - "traefik.http.routers.mcp-server.tls=true"
+      - "traefik.http.routers.mcp-server.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mcp-server.loadbalancer.server.port=4180"
+
+  # ======= MCP MICROSERVICES =======
+
+  # n8n MCP Service (using czlonkowski/n8n-mcp)
+  mcp-n8n:
+    image: ghcr.io/czlonkowski/n8n-mcp:latest
+    container_name: mcp-n8n
+    restart: unless-stopped
+    networks:
+      - mcp-internal
+      - traefik-proxy  # Access to n8n instance
+    env_file:
+      - /home/administrator/secrets/mcp-server.env
+    environment:
+      # HTTP mode for container-to-container communication
+      MCP_MODE: http
+      USE_FIXED_HTTP: "true"
+      AUTH_TOKEN: ${MCP_N8N_AUTH_TOKEN:-secure-n8n-token-2025}
+
+      # Application settings
+      NODE_ENV: production
+      LOG_LEVEL: info
+      PORT: 3000
+
+      # Database
+      NODE_DB_PATH: /app/data/nodes.db
+      REBUILD_ON_START: "false"
+
+      # n8n API configuration (enables workflow management tools)
+      N8N_API_URL: ${N8N_API_URL}
+      N8N_API_KEY: ${N8N_API_KEY}
+    volumes:
+      - mcp-n8n-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health", "-H", "Authorization: Bearer secure-n8n-token-2025-mcp-orchestrator"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Allow time for database initialization
+
+  # Custom HTTP-Native Playwright Service (Expert-Recommended Replacement)
+  mcp-playwright:
+    build:
+      context: ../playwright
+      dockerfile: Dockerfile
+    image: mcp-playwright:latest
+    container_name: mcp-playwright
+    restart: unless-stopped
+    networks:
+      - mcp-internal
+    env_file:
+      - /home/administrator/secrets/mcp-playwright.env
+    environment:
+      # Override specific values from env file
+      PORT: 8080
+      PLAYWRIGHT_OUTPUT_DIR: /tmp/playwright-output
+    volumes:
+      - playwright-output:/tmp/playwright-output
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw  # For screenshot support
+    security_opt:
+      - seccomp:unconfined  # Required for Chromium in container
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Browser initialization time
+    # Resource limits for browser automation
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  # TimescaleDB HTTP-Native MCP Service (converted from problematic stdio implementation)
+  mcp-timescaledb:
+    build:
+      context: ../timescaledb
+      dockerfile: Dockerfile
+    image: mcp-timescaledb:latest
+    container_name: mcp-timescaledb
+    restart: unless-stopped
+    networks:
+      - mcp-internal
+      - postgres-net  # Access to TimescaleDB
+      - observability-net  # Access to TimescaleDB
+    environment:
+      # TimescaleDB connection (internal Docker hostname)
+      TSDB_HOST: timescaledb
+      TSDB_PORT: 5432
+      TSDB_DATABASE: timescale
+      TSDB_USER: tsdbadmin
+      TSDB_PASSWORD: TimescaleSecure2025
+
+      # Service settings
+      LOG_LEVEL: info
+      PORT: 8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+
+# ======= NETWORKS =======
+networks:
+  traefik-proxy:
+    external: true
+  postgres-net:
+    external: true
+  litellm-net:
+    external: true
+  observability-net:
+    external: true
+  keycloak-net:
+    external: true
+  mcp-internal:
+    driver: bridge
+    internal: false  # Allow external communication for development
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+# ======= VOLUMES =======
+volumes:
+  mcp-n8n-data:
+    driver: local
+  playwright-output:
+    driver: local

@@ -1,0 +1,34 @@
+FROM node:20-alpine
+
+# Install Docker CLI and dependencies
+RUN apk add --no-cache docker-cli curl
+
+WORKDIR /app
+
+# Copy SSE wrapper
+COPY sse-wrapper.js .
+
+# Install SSE wrapper dependencies
+RUN npm init -y && npm install express uuid
+
+# Create wrapper script for filesystem MCP
+RUN echo '#!/bin/sh' > /app/run-filesystem.sh && \
+    echo 'exec docker run --rm -i \' >> /app/run-filesystem.sh && \
+    echo '  -v /workspace:/workspace \' >> /app/run-filesystem.sh && \
+    echo '  -v /projects:/projects \' >> /app/run-filesystem.sh && \
+    echo '  mcp/filesystem /workspace /projects' >> /app/run-filesystem.sh && \
+    chmod +x /app/run-filesystem.sh
+
+# Set environment
+ENV PORT=8080
+ENV HOST=0.0.0.0
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Run filesystem MCP with SSE wrapper
+CMD ["node", "sse-wrapper.js", "/app/run-filesystem.sh"]

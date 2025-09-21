@@ -1,0 +1,133 @@
+=== MCP Complete Test Started: Mon Sep  8 10:22:44 AM EDT 2025 ===
+[10:22:44] TEST 1: Basic execution test
+[10:22:44] ✗ Service failed to start properly
+[10:22:44] TEST 2: Initialize protocol
+[10:22:45] ✓ Initialize response received
+{"jsonrpc": "2.0", "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {"listChanged": false}}, "serverInfo": {"name": "postgres", "version": "1.0.0"}}, "id": 1}
+[10:22:45] TEST 3: Tools list after initialize
+[10:22:45] ✓ Tools list received
+5
+[10:22:45] TEST 4: Tool call (list_databases)
+[10:22:45] ✓ Tool call succeeded
+{
+  "databases": [
+    {
+      "name": "defaultdb",
+      "owner": "admin",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": null,
+      "size": 7713583,
+      "size_pretty": "7533 kB"
+    },
+    {
+      "name": "guacamole_db",
+      "owner": "guacamole_user",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/guacamole_user, guacamole_user=CTc/guacamole_user",
+      "size": 9179951,
+      "size_pretty": "8965 kB"
+    },
+    {
+      "name": "litellm_db",
+      "owner": "admin",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/admin, admin=CTc/admin, litellm_user=CTc/admin",
+      "size": 11309871,
+      "size_pretty": "11 MB"
+    },
+    {
+      "name": "mcp_memory",
+      "owner": "admin",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": null,
+      "size": 9229103,
+      "size_pretty": "9013 kB"
+    },
+    {
+      "name": "mcp_memory_admin",
+      "owner": "administrator",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": null,
+      "size": 8950575,
+      "size_pretty": "8741 kB"
+    },
+    {
+      "name": "mcp_memory_administrator",
+      "owner": "administrator",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": null,
+      "size": 9220911,
+      "size_pretty": "9005 kB"
+    },
+    {
+      "name": "n8n_db",
+      "owner": "n8n_user",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/n8n_user, n8n_user=CTc/n8n_user",
+      "size": 10588975,
+      "size_pretty": "10 MB"
+    },
+    {
+      "name": "nextcloud",
+      "owner": "admin",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/admin, admin=CTc/admin, nextcloud=CTc/admin",
+      "size": 18273071,
+      "size_pretty": "17 MB"
+    },
+    {
+      "name": "openbao_db",
+      "owner": "openbao_user",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/openbao_user, openbao_user=CTc/openbao_user",
+      "size": 7869231,
+      "size_pretty": "7685 kB"
+    },
+    {
+      "name": "openproject_production",
+      "owner": "openproject",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/openproject, openproject=CTc/openproject",
+      "size": 30798639,
+      "size_pretty": "29 MB"
+    },
+    {
+      "name": "postfixadmin",
+      "owner": "postfixadmin",
+      "encoding": "UTF8",
+      "collation": "en_US.utf8",
+      "ctype": "en_US.utf8",
+      "access_privileges": "=Tc/postfixadmin, postfixadmin=CTc/postfixadmin",
+      "size": 8434479,
+      "size_pretty": "8237 kB"
+    }
+  ],
+  "count": 11
+}
+[10:22:45] TEST 5: Multiple rapid calls
+[10:22:45] Received 3 responses from 3 requests
+[10:22:45] TEST 6: Service persistence test
+[10:22:47] Service handled 3 requests with delays
+[10:22:47] TEST 7: Error handling
+[10:22:47] ✓ Error handling works
+=== Test Complete ===

@@ -1,0 +1,100 @@
+version: '3.8'
+
+networks:
+  mcp-internal:
+    driver: bridge
+    name: mcp-internal
+  traefik-proxy:
+    external: true
+  postgres-net:
+    external: true
+  loki-net:
+    name: loki-net
+    driver: bridge
+    external: false
+
+x-common-settings: &common
+  restart: unless-stopped
+  networks:
+    - mcp-internal
+    - traefik-proxy
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+      labels: "com.docker.compose.service,com.docker.compose.project"
+
+services:
+  # ============== FINAL PRODUCTION ARCHITECTURE ==============
+  
+  # Central MCP SSE Proxy (handles all MCPs)
+  mcp-proxy:
+    <<: *common
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    container_name: mcp-proxy-main
+    ports:
+      - "8500:8080"  # Main MCP gateway port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /workspace:/workspace
+      - /home/administrator/projects:/home/administrator/projects:ro
+      - ./proxy/servers-full.json:/app/servers.json:ro
+    environment:
+      - LOKI_URL=http://loki:3100
+      - NETDATA_URL=http://netdata:19999
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - MEMORY_DB_PASSWORD=${MEMORY_DB_PASSWORD:?MEMORY_DB_PASSWORD is required}
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--named-server-config"
+      - "/app/servers.json"
+    networks:
+      - mcp-internal
+      - traefik-proxy
+      - loki-net
+      - postgres-net
+    labels:
+      - "com.docker.compose.service=mcp-proxy"
+      - "com.mcp.type=gateway"
+      - "com.mcp.version=production"
+      - "com.mcp.services=filesystem,monitoring,fetch,postgres,memory"
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp.rule=Host(`mcp.local`)"
+      - "traefik.http.services.mcp.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/servers/filesystem/sse"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - mcp-db-init
+
+  # Database initialization for memory MCP
+  mcp-db-init:
+    image: postgres:15-alpine
+    networks:
+      - postgres-net
+    environment:
+      - PGHOST=postgres
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    command: |
+      sh -c "
+        until pg_isready -h postgres; do sleep 1; done
+        psql -U admin -d postgres -c 'CREATE DATABASE IF NOT EXISTS memory_db;' || true
+        psql -U admin -d postgres -c \"CREATE USER IF NOT EXISTS memory_user WITH PASSWORD '${MEMORY_DB_PASSWORD:?MEMORY_DB_PASSWORD is required}';\" || true
+        psql -U admin -d postgres -c 'GRANT ALL ON DATABASE memory_db TO memory_user;' || true
+        echo 'Database initialization complete'
+      "
+    restart: "no"
+
+volumes:
+  mcp-data:
+    name: mcp-data
