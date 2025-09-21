@@ -8,28 +8,15 @@ services:
     env_file:
       - /home/administrator/secrets/mcp-postgres.env
     environment:
-      # MCP server configuration
-      MCP_TRANSPORT: sse
-      MCP_PORT: 8686
-      MCP_ALLOW_WRITE: "false"
-      LOG_LEVEL: INFO
-      # DATABASE_URI will be loaded from the env_file
+      - MCP_TRANSPORT=stdio
+      - MCP_ALLOW_WRITE=false
     ports:
       - "48010:8686"
     networks:
       - litellm-mcp-net
       - postgres-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8686/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    labels:
-      - "project=mcp"
-      - "component=postgres"
-      - "mcp.server=db_main"
-      - "mcp.transport=sse"
+      disable: true
     logging:
       driver: json-file
       options:
