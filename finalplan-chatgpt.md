@@ -1,5 +1,19 @@
 # Refined Plan: LiteLLM v1.77.3 MCP Gateway on linuxserver.lan
 
+> **🚨 HARD RULE - LOCAL NETWORK DEPLOYMENT ONLY:**
+> **This is a LOCAL NETWORK ONLY deployment using `linuxserver.lan`:**
+> - **NEVER use Traefik** reverse proxy or routing
+> - **NEVER use Keycloak** authentication or SSO
+> - **NEVER use ai-servicers.com** DNS or HTTPS
+> - **ALWAYS use direct port access** (e.g., `http://linuxserver.lan:4000`)
+> - **ALWAYS use HTTP** (not HTTPS)
+>
+> **🔒 COMPLIANCE RULE:** These directives are HARD RULES and must NOT be violated unless:
+> 1. Claude asks about a specific technical issue
+> 2. User directly tells Claude to violate this order for that specific issue
+>
+> All references to Traefik/OIDC/authentication below are for FUTURE consideration only and must be IGNORED for this deployment.
+
 ## 0. Community-Supported MCP Gateway Options (Assignment Outcome)
 | Candidate | Community Status | MCP Support | Fit for Requirement | Notes |
 |-----------|------------------|-------------|---------------------|-------|
