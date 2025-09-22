@@ -141,69 +141,160 @@ mcp_servers:
 
 These rules are HARD RULES and must NOT be violated unless user directly requests otherwise.
 
-## 🚧 Current Status: PHASES A-F COMPLETED, CLAUDE CODE CLI INTEGRATED
+## 🚧 Current Status: CRITICAL ISSUE IDENTIFIED - MCP FUNCTION EXECUTION FAILING
 
-### ✅ COMPLETED IMPLEMENTATION:
-**Phase A-F - Full Deployment & Client Integration**:
-- ✅ LiteLLM v1.77.3-stable deployed and operational at localhost:4000
-- ✅ MCP postgres service deployed (with transport compatibility notes)
-- ✅ Docker networks established and functioning
-- ✅ Health checks configured (LiteLLM healthy, MCP health disabled due to stdio/SSE mismatch)
-- ✅ Claude Code CLI configured with LiteLLM gateway connection
-- ✅ API authentication working with master key
-- ✅ MCP endpoint responding and ready for SSE connections
+### ⚠️ PARTIALLY WORKING IMPLEMENTATION:
+**What's Working**:
+- ✅ LiteLLM v1.77.3 deployed and operational at localhost:4000
+- ✅ Database connectivity restored (PostgreSQL SCRAM-SHA-256 authentication fixed)
+- ✅ Environment variable substitution working (`os.environ/VARIABLE_NAME` syntax)
+- ✅ Claude model (claude-3-haiku-20240307) healthy and responding
+- ✅ Virtual key authentication functional
+- ✅ MCP postgres service running and receiving SSE connections
+- ✅ Function call generation working correctly
 
-### 🔧 CURRENT STATE:
-- **LiteLLM Proxy**: Fully operational at localhost:4000 with master key auth
-- **MCP Postgres**: Deployed at localhost:48010 (stdio transport, not SSE compatible)
-- **Networks**: litellm-mcp-net and postgres-net operational
-- **Claude Code CLI**: Configured at `/home/administrator/.config/claude/mcp-settings.json`
-- **Secrets**: All credential files secured with 600 permissions
+**What's NOT Working**:
+- ❌ **CRITICAL**: MCP function execution failing - stops at `"finish_reason":"tool_calls"`
+- ❌ Function calls generated but not executed by LiteLLM
+- ❌ No function results returned to clients
+- ❌ Missing execution phase of MCP workflow
 
-### 🎯 IMPLEMENTATION SUCCESS:
-✅ **PRIMARY GOAL ACHIEVED**: LiteLLM v1.77.3-stable deployed as MCP Gateway for local network
-✅ **AUTHENTICATION**: Working with master key (`sk-litellm-cecca...`)
-✅ **MCP ENDPOINT**: Responding at `http://localhost:4000/mcp/` with SSE expectation
-✅ **CLAUDE CODE CLI**: Successfully configured and ready for MCP connections
+### 🔧 CURRENT STATE - DEBUGGING REQUIRED:
+- **LiteLLM Proxy**: Operational but MCP execution broken
+- **MCP Postgres**: Receiving connections but no execution requests
+- **Function Generation**: Working - Claude generates proper `tool_calls`
+- **Function Execution**: **FAILING** - LiteLLM not routing calls to MCP servers
+- **Authentication**: Master key working, virtual key associations unclear
+- **Transport**: SSE connections established but execution not triggered
 
-### ⚠️ KNOWN LIMITATIONS & RESOLUTIONS:
-1. **MCP Transport Confusion (RESOLVED)**:
-   - **Initial Error**: Assumed LiteLLM only supported SSE transport for MCP
-   - **User Correction**: LiteLLM actually supports stdio, http, and sse transports
-   - **Resolution**: LiteLLM configuration allows all three transport types as user demonstrated
-   - **Current Status**: Transport mismatch remains - crystaldba/postgres-mcp (stdio) vs LiteLLM config (http)
-   - **Next Steps**: Either configure LiteLLM for stdio or find HTTP-compatible postgres MCP server
+### ❌ CRITICAL BLOCKING ISSUE:
+**MCP Function Execution Failure**:
+```json
+// Current response - stops here without execution:
+{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "tool_calls": [{
+        "function": {
+          "arguments": "{\"properties\": {}}",
+          "name": "postgres_list_databases"
+        },
+        "id": "toolu_01FwQ69GkaYQfo2Ah76ggEjv",
+        "type": "function"
+      }]
+    }
+  }]
+}
+// Expected: Follow-up with function results and "finish_reason":"stop"
+```
 
-2. **Database Disabled**: Using `disable_database: true` to avoid authentication issues
-3. **Mock OpenAI Key**: Health check shows expected authentication error for mock key
+### 🔍 ROOT CAUSE ANALYSIS:
+**Primary Issue**: Virtual key authentication or MCP server association failing
+- MCP servers configured to only work with virtual keys
+- Virtual keys not properly loaded/associated in database after recreation
+- Master key works for Claude calls but doesn't have MCP server access
+- Function execution routing from LiteLLM to MCP servers broken
 
-### 🔧 TRANSPORT INVESTIGATION FINDINGS:
-- **LiteLLM supports**: stdio, http, sse (confirmed by user observation of console options)
-- **crystaldba/postgres-mcp**: Only stdio transport available
-- **mcp/postgres**: Attempted but requires different configuration (failed to start)
-- **Current Config**: LiteLLM set to http transport, but MCP server only does stdio
+### 🛠️ IMPLEMENTED FIXES:
+1. **Environment Variable Syntax**: `${VAR}` → `os.environ/VAR` (WORKING)
+2. **Database Authentication**: SCRAM-SHA-256 password encryption (WORKING)
+3. **Virtual Key Recreation**: Manual SHA256 hash insertion (WORKING)
+4. **MCP Server Registration**: Manual database insertion (ATTEMPTED)
+5. **require_approval: "never"**: Added to config (NO EFFECT)
 
-### 🔄 READY FOR TESTING:
-The LiteLLM MCP Gateway is fully deployed and Claude Code CLI is configured. Ready for end-to-end MCP testing.
+### 🔧 CURRENT CONFIGURATION (2025-09-21):
+```yaml
+# Working sections:
+litellm_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+model_list:
+  - model_name: claude-3-haiku-orchestrator
+    litellm_params:
+      model: claude-3-haiku-20240307
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+# Problematic section - execution failing:
+virtual_keys:
+  - api_key: os.environ/LITELLM_VIRTUAL_KEY_TEST
+    models: ["claude-3-haiku-orchestrator"]
+    mcp_servers: ["db_main"]
+
+mcp_servers:
+  db_main:
+    transport: sse
+    url: http://mcp-postgres:8080/sse
+    api_keys: [os.environ/LITELLM_VIRTUAL_KEY_TEST]
+    require_approval: "never"
+```
+
+### 📋 KNOWLEDGE GAPS REQUIRING RESOLUTION:
+1. **LiteLLM MCP Execution Architecture**: How function calls are routed to MCP servers
+2. **Database Schema**: Required associations between virtual keys and MCP servers
+3. **Configuration Loading**: Whether MCP servers from config auto-populate database
+4. **Execution Trigger**: What initiates execution phase after tool_calls generation
+5. **Authentication Flow**: How virtual keys grant access to specific MCP servers
+
+### 🎯 NEXT STEPS FOR RESOLUTION:
+1. **Virtual Key Authentication Fix**: Investigate why virtual keys can't access MCP servers
+2. **Database Investigation**: Check all MCP-related database tables and relationships
+3. **Alternative Authentication**: Test MCP servers with master key instead of virtual key
+4. **LiteLLM Source Analysis**: Research LiteLLM MCP execution routing code
+5. **Community Resources**: Search for working LiteLLM MCP configurations
+
+### 📝 RESEARCH FINDINGS:
+- **GitHub Issue #16688**: "MCP tool call parsed, but sometimes not executed"
+- **Known LiteLLM MCP bugs**: Various reports of incomplete tool execution flows
+- **Authentication hypothesis**: Virtual key → MCP server associations incomplete
+- **Execution hypothesis**: Missing trigger mechanism for function execution phase
+
+### 📚 HTTP Adapter Pattern (Future Reference)
+- **Purpose**: Documented as fallback solution for truly stdio-only MCP tools
+- **Status**: Preserved in documentation for future projects
+- **Usage**: Only when MCP tools lack native HTTP/SSE support
 
 ## 📝 Session Notes
 - **Session Start**: 2025-01-20
-- **Session Continuation**: 2025-09-21 (context continuation)
-- **Implementation Completed**: Phases A through F successfully deployed
-- **Key Decisions**:
-  - LiteLLM Proxy selected as MCP gateway solution
-  - Database disabled to avoid authentication complexity
-  - Master key authentication for Claude Code CLI
-  - Transport mismatch documented (stdio vs SSE)
-- **Version Verification**: Added deployment verification directive to coding standards
-- **Critical Fix**: Corrected container naming conventions and health checks
+- **Session Continuation**: 2025-09-21 (context continuation from previous conversation)
+- **Critical Issues Discovered**: Multiple authentication and configuration issues
+- **Major Fixes Applied**:
+  - Environment variable syntax corrected (`os.environ/VAR`)
+  - Database authentication restored (SCRAM-SHA-256)
+  - Virtual keys manually recreated after database wipe
+- **Remaining Issue**: MCP function execution completely broken
+- **Status**: Partial implementation - infrastructure working, core functionality failing
 
 ### 🔧 Technical Configuration Summary:
-- **LiteLLM**: `ghcr.io/berriai/litellm:main-latest` (v1.77.3)
-- **MCP Postgres**: `crystaldba/postgres-mcp:latest` (stdio only)
-- **Authentication**: Master key `sk-litellm-cecca390f610603ff5180ba0ba2674afc8f7689716daf25343de027d10c32404`
-- **Claude Code MCP**: Configured at `/home/administrator/.config/claude/mcp-settings.json`
+- **LiteLLM**: `ghcr.io/berriai/litellm:main-latest`
+- **MCP Postgres**: `crystaldba/postgres-mcp:latest` with SSE transport
+- **Authentication**: Master key working, virtual key associations broken
+- **Database**: PostgreSQL with manually restored virtual keys
+- **Current Status**: ⚠️ **BLOCKING ISSUE** - Function calls not executing
+
+### 💡 Critical Learnings (2025-09-21):
+1. **LiteLLM Environment Variables**: Must use `os.environ/VAR` syntax, not `${VAR}`
+2. **PostgreSQL Authentication**: Requires SCRAM-SHA-256 password encryption
+3. **Virtual Key Storage**: SHA256 hashes stored in `LiteLLM_VerificationToken` table
+4. **MCP Server Registration**: Database associations between virtual keys and MCP servers critical
+5. **Function Execution**: LiteLLM MCP integration has execution routing issues
+
+### 🚨 IMPLEMENTATION STATUS: PARTIALLY WORKING
+**Functional Components**:
+- ✅ LiteLLM proxy server operational
+- ✅ Database connectivity working
+- ✅ Claude model integration working
+- ✅ Function call generation working
+
+**Broken Components**:
+- ❌ MCP function execution (CRITICAL)
+- ❌ Virtual key → MCP server authentication
+- ❌ Tool result return to clients
+- ❌ Complete MCP workflow
+
+**Next Required Action**: Debug virtual key authentication and MCP execution routing in LiteLLM
 
 ---
 *Last Updated: 2025-09-21*
-*Status: IMPLEMENTATION COMPLETE - Ready for testing*
+*Status: PARTIAL IMPLEMENTATION - Core MCP execution failing, requires debugging*

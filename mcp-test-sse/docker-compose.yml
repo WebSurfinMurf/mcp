@@ -1,0 +1,17 @@
+version: '3.9'
+
+services:
+  mcp-test-sse:
+    build: .
+    container_name: mcp-test-sse
+    restart: unless-stopped
+    networks:
+      - litellm-mcp-net
+    volumes:
+      - ./logs:/app/logs
+    ports:
+      - "48020:8000" # Expose on host for direct testing if needed
+
+networks:
+  litellm-mcp-net:
+    external: true
