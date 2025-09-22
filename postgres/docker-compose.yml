@@ -7,11 +7,15 @@ services:
     restart: unless-stopped
     env_file:
       - /home/administrator/secrets/mcp-postgres.env
+
+    # Enable SSE mode with correct command-line arguments
+    command: ["--transport", "sse", "--sse-host", "0.0.0.0", "--sse-port", "8080", "postgresql://admin:Pass123qp@postgres:5432/postgres"]
+
     environment:
-      - MCP_TRANSPORT=stdio
       - MCP_ALLOW_WRITE=false
     ports:
-      - "48010:8686"
+      # Expose the container's SSE port
+      - "48010:8080"
     networks:
       - litellm-mcp-net
       - postgres-net

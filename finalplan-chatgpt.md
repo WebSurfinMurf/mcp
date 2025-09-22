@@ -211,40 +211,57 @@ mcp_servers:
 ```
 Add stubs for future HTTP/stdio services with comments referencing Section 4 patterns.
 
-### Phase D – MCP Connector Deployment (Example: Postgres)
-1. In `/home/administrator/projects/mcp/postgres/docker-compose.yml`:
-   ```yaml
-   version: "3.9"
+### Phase D – MCP Connector Deployment (UPDATED: Native SSE Transport)
 
-   services:
-     mcp-postgres:
-       image: crystaldba/postgres-mcp:latest
-       container_name: mcp-postgres
-       restart: unless-stopped
-       env_file:
-         - /home/administrator/secrets/mcp-postgres.env
-       environment:
-         MCP_TRANSPORT: sse
-         MCP_PORT: 8686
-         MCP_ALLOW_WRITE: "false"
-       ports:
-         - "48010:8686"
-       networks:
-         - litellm-mcp-net
-         - postgres-net
-       healthcheck:
-         test: ["CMD-SHELL", "curl -fsS http://localhost:8686/health || exit 1"]
-         interval: 15s
-         timeout: 5s
-         retries: 5
-         start_period: 20s
+**BREAKTHROUGH UPDATE**: The `crystaldba/postgres-mcp` container **natively supports SSE transport** via command-line arguments! This eliminates the need for custom HTTP adapters and provides a much cleaner solution.
 
-   networks:
-     litellm-mcp-net:
-       external: true
-     postgres-net:
-       external: true
-   ```
+#### Simple SSE Configuration
+In `/home/administrator/projects/mcp/postgres/docker-compose.yml`:
+```yaml
+version: "3.9"
+
+services:
+  mcp-postgres:
+    # Use the original image directly, no custom build needed
+    image: crystaldba/postgres-mcp:latest
+    container_name: mcp-postgres
+    restart: unless-stopped
+    env_file:
+      - /home/administrator/secrets/mcp-postgres.env
+
+    # Enable SSE mode with correct command-line arguments (includes database URL)
+    command: ["--transport", "sse", "--sse-host", "0.0.0.0", "--sse-port", "8080", "postgresql://admin:Pass123qp@postgres:5432/postgres"]
+
+    environment:
+      - MCP_ALLOW_WRITE=false
+    ports:
+      # Expose the container's SSE port
+      - "48010:8080"
+    networks:
+      - litellm-mcp-net
+      - postgres-net
+    healthcheck:
+      disable: true
+
+networks:
+  litellm-mcp-net:
+    external: true
+  postgres-net:
+    external: true
+```
+
+#### Updated LiteLLM Configuration
+The LiteLLM `config.yaml` uses SSE transport:
+```yaml
+mcp_servers:
+  db_main:
+    transport: sse
+    url: http://mcp-postgres:8080/sse
+    api_keys: [${LITELLM_VIRTUAL_KEY_TEST}]
+    description: "PostgreSQL database tools via native SSE"
+    timeout: 30
+```
+
 2. Create `/home/administrator/secrets/mcp-postgres.env` containing `DATABASE_URI=postgresql://...` (read-only credentials preferred) and set permissions `chmod 600 /home/administrator/secrets/mcp-postgres.env`.
 3. Document service details in `/home/administrator/projects/mcp/postgres/CLAUDE.md` once operational.
 
@@ -296,9 +313,70 @@ Add stubs for future HTTP/stdio services with comments referencing Section 4 pat
 - Rotate virtual keys periodically; document rotation procedure in `litellm/README.md`.
 
 ## 6. Protocol Recipes & Patterns
-- **SSE Template:** Provided in Phase D.
+- **SSE Template:** Provided in Phase D (preferred approach).
 - **HTTP Template:** See Section 4 examples; ensure MCP server exposes `/health`.
 - **Stdio Template:** Package tool binaries within `/home/administrator/projects/litellm/tools`; update Docker image via overlay or bind mount. Keep usage minimal; prefer SSE wrappers for better isolation.
+
+### HTTP Adapter Pattern (For stdio-only MCP Tools)
+**Use Case**: When MCP tools only support stdio transport but you need HTTP/SSE connectivity.
+
+**Architecture**: Client → LiteLLM → HTTP Adapter → stdio MCP Tool
+
+**Implementation Template**:
+```javascript
+// adapter.js - HTTP-to-stdio bridge pattern
+const express = require('express');
+const { spawn } = require('child_process');
+const app = express();
+app.use(express.json());
+
+app.post('/mcp', (req, res) => {
+    const mcpProcess = spawn('your-mcp-tool');
+    let stdoutData = '';
+
+    mcpProcess.stdout.on('data', (data) => {
+        stdoutData += data.toString();
+    });
+
+    mcpProcess.on('close', (code) => {
+        if (code !== 0) {
+            return res.status(500).send(`MCP process exited with code ${code}`);
+        }
+        try {
+            const responses = stdoutData.trim().split('\n');
+            const lastResponse = responses[responses.length - 1];
+            res.setHeader('Content-Type', 'application/json');
+            res.send(lastResponse);
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to parse MCP response', details: stdoutData });
+        }
+    });
+
+    mcpProcess.stdin.write(JSON.stringify(req.body) + '\n');
+    mcpProcess.stdin.end();
+});
+
+app.listen(8080, () => {
+    console.log('MCP HTTP adapter running on port 8080');
+});
+```
+
+**Dockerfile Template**:
+```dockerfile
+FROM your-mcp-tool-image:latest
+USER root
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+USER original-user
+WORKDIR /app
+COPY adapter.js .
+RUN npm install express
+CMD ["node", "adapter.js"]
+```
+
+**When to Use**: Only when the MCP tool lacks native HTTP/SSE support. Always check for native transport options first (like postgres SSE support).
 
 ## 7. Expansion Roadmap
 1. Deploy additional MCP services (`filesystem`, `fetch`, `n8n`, `timescaledb`). Each gets its own directory, Compose file, secrets, and LiteLLM `mcp_servers` entry.
@@ -307,12 +385,80 @@ Add stubs for future HTTP/stdio services with comments referencing Section 4 pat
 4. Evaluate LiteLLM rate limiting, quotas, and Redis caching if usage increases.
 5. Update AINotes docs (`SYSTEM-OVERVIEW.md`, `network.md`, `security.md`) post-deployment per coding standards.
 
-## 8. Risks and Open Questions
-- **Image availability:** Verify `ghcr.io/berriai/litellm:v1.77.3-stable` exists; fall back to latest `*-stable` if necessary and capture variance in docs.
-- **Permission boundaries:** Current CLI lacks Docker socket access; final deployment must be run with appropriate privileges.
-- **Database sharing vs isolation:** Decide whether LiteLLM uses shared cluster or dedicated container; document rationale.
-- **Client header support:** Ensure each client (e.g., Open WebUI) can send `x-mcp-servers`; may require middleware updates.
-- **MCP connector maturity:** Some community MCP containers may lack full health endpoints or fine-grained auth—evaluate before production adoption.
+## 8. Implementation Status (2025-09-21 Update)
+
+### ✅ COMPLETED: Environment Variable Fix
+**Critical Discovery**: LiteLLM requires `os.environ/VARIABLE_NAME` syntax instead of `${VARIABLE_NAME}` for environment variable substitution.
+
+**Applied to**:
+- `litellm_settings.master_key: os.environ/LITELLM_MASTER_KEY`
+- `litellm_settings.database_url: os.environ/DATABASE_URL`
+- `model_list[].litellm_params.api_key: os.environ/ANTHROPIC_API_KEY`
+- `virtual_keys[].api_key: os.environ/LITELLM_VIRTUAL_KEY_TEST`
+- `mcp_servers[].api_keys: [os.environ/LITELLM_VIRTUAL_KEY_TEST]`
+
+### ✅ COMPLETED: Database Authentication & Connectivity
+- PostgreSQL SCRAM-SHA-256 authentication working
+- Database connection string operational: `postgresql://litellm_user:LiteLLMPass2025@postgres:5432/litellm_db`
+- Virtual keys manually restored after database recreation
+
+### ✅ COMPLETED: Model Configuration
+- Claude-3-haiku-20240307 model healthy and responding
+- OpenAI-compatible API endpoints functional
+- Master key authentication working
+
+### ❌ UNRESOLVED: MCP Function Execution Issue
+**Problem**: Function calls generated but not executed
+- Claude correctly generates `tool_calls` with proper JSON structure
+- Virtual key authentication functional
+- MCP postgres service running and receiving connections
+- Function calls stop at `"finish_reason":"tool_calls"` without execution
+- Missing execution phase of MCP workflow
+
+**Root Cause**: Unknown - appears to be LiteLLM MCP integration issue
+- GitHub issue #16688: "MCP tool call parsed, but sometimes not executed"
+- Virtual key association with MCP servers may be incomplete
+- Execution routing from LiteLLM to MCP servers not functioning
+
+### 🔧 Current Configuration
+```yaml
+# Working config.yaml syntax
+litellm_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+model_list:
+  - model_name: claude-3-haiku-orchestrator
+    litellm_params:
+      model: claude-3-haiku-20240307
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+virtual_keys:
+  - api_key: os.environ/LITELLM_VIRTUAL_KEY_TEST
+    models: ["claude-3-haiku-orchestrator"]
+    mcp_servers: ["db_main"]
+
+mcp_servers:
+  db_main:
+    transport: sse
+    url: http://mcp-postgres:8080/sse
+    api_keys: [os.environ/LITELLM_VIRTUAL_KEY_TEST]
+    require_approval: "never"
+```
+
+### 📋 Implementation Lessons Learned
+1. **Environment Variables**: Use `os.environ/VAR` not `${VAR}` in LiteLLM config
+2. **Database Auth**: PostgreSQL requires SCRAM-SHA-256 encryption for passwords
+3. **Virtual Keys**: Manual restoration required after database recreation
+4. **MCP Execution**: Function generation works, execution phase fails
+5. **SSE Transport**: Network connectivity confirmed working between containers
+
+## 9. Risks and Open Questions
+- **MCP Execution Architecture**: How LiteLLM routes function calls to MCP servers for execution
+- **Virtual Key Association**: Proper database associations between virtual keys and MCP servers
+- **Function Execution Trigger**: What triggers execution phase after tool_calls generation
+- **LiteLLM MCP Bugs**: Known issues with MCP tool execution in v1.77.3+
+- **Alternative Approaches**: Direct MCP client vs LiteLLM proxy gateway
 
 ## Executive Summary
-Community analysis identifies the LiteLLM Proxy as the most robust, widely supported MCP gateway for your LAN environment. Deploy LiteLLM v1.77.3-stable from `/home/administrator/projects/litellm`, attach it to per-service MCP containers located under `/home/administrator/projects/mcp/{service}`, and standardize on SSE transport while documenting HTTP/stdio fallbacks. Configure LiteLLM’s `mcp_servers` with scoped virtual keys, validate functionality using `/v1/responses`, and integrate with local clients (Claude Code, Gemini CLI, ChatGPT Codex CLI, Open WebUI, VS Code). Once the baseline works, expand connectors, fold LiteLLM into observability/backup routines, and prepare Traefik + Keycloak hardening for broader network use.
+LiteLLM Proxy successfully deployed with working authentication, environment variable substitution, and Claude model integration. Critical environment variable syntax discovered (`os.environ/VAR`). Database connectivity and virtual keys restored. **However, MCP function execution remains unresolved** - function calls are generated correctly but not executed by LiteLLM. This appears to be a known issue with LiteLLM MCP integration requiring further investigation or alternative approaches. The infrastructure is in place and partially functional, but the core MCP execution workflow needs resolution before full client integration can proceed.
