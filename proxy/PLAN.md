@@ -1,8 +1,9 @@
-# MCP Proxy Implementation Plan
+# MCP Proxy Implementation Plan - UPDATED
 
 **Project**: Central MCP Server using TBXark/mcp-proxy
 **Target**: Single aggregation point for all MCP services on linuxserver.lan
 **Date**: 2025-09-21
+**Status**: Updated with critical stdio transport refinement
 
 ## Requirements Analysis
 
@@ -32,26 +33,53 @@
 
 **Overall Alignment**: 🎯 **Perfect Match** - TBXark/mcp-proxy addresses all requirements directly
 
+## 🔧 Critical Refinement: stdio Transport Docker CLI Support
+
+### The Issue
+The original plan assumed `docker exec` commands would work from within the `mcp-proxy` container. However, the official `ghcr.io/tbxark/mcp-proxy:latest` image likely does not include the Docker CLI client to keep the image lightweight.
+
+### The Solution
+**Custom Dockerfile with Docker CLI**: Extend the official image to include Docker CLI support while maintaining security best practices.
+
+#### Enhanced Dockerfile (`/home/administrator/projects/mcp/proxy/Dockerfile`)
+```dockerfile
+# Start from the official mcp-proxy image
+FROM ghcr.io/tbxark/mcp-proxy:latest
+
+# Switch to the root user to install packages
+USER root
+
+# Install the Docker CLI client and its dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends docker.io && \
+    rm -rf /var/lib/apt/lists/*
+
+# Switch back to the original non-root user for security
+USER 1000
+```
+
+**Security Note**: The `/var/run/docker.sock:/var/run/docker.sock` volume mount gives the proxy container Docker host control. This is consistent with existing infrastructure tools (Portainer) and appropriate for LAN-only deployment.
+
 ## Architecture Overview
 
 ```
-External Clients                Central Proxy              Individual MCP Services
+External Clients                Enhanced Proxy             Individual MCP Services
 ┌─────────────────┐             ┌─────────────────┐        ┌─────────────────────────────┐
-│ Claude Code CLI │────────┐    │                 │        │ projects/mcp/postgres       │
-│ (stdio/HTTP)    │        │    │ TBXark/mcp-proxy│────────│ ├── mcp-postgres            │
-├─────────────────┤        │    │                 │        │ └── docker-compose.yml      │
-│ Gemini CLI      │────────┼────│ HTTP Server     │        ├─────────────────────────────┤
-│ (HTTP)          │        │    │ Port: 9090      │────────│ projects/mcp/filesystem     │
-├─────────────────┤        │    │                 │        │ ├── mcp-filesystem          │
-│ ChatGPT Codex   │────────┤    │ Config-driven   │        │ └── docker-compose.yml      │
-│ (HTTP)          │        │    │ Service routing │        ├─────────────────────────────┤
-├─────────────────┤        │    │                 │────────│ projects/mcp/fetch          │
-│ Open-WebUI      │────────┤    │ Aggregates:     │        │ ├── mcp-fetch               │
-│ (HTTP)          │        │    │ - Tools         │        │ └── docker-compose.yml      │
-├─────────────────┤        │    │ - Resources     │        ├─────────────────────────────┤
-│ VS Code         │────────┘    │ - Prompts       │────────│ projects/mcp/timescaledb    │
-│ (HTTP/stdio)    │             │                 │        │ ├── mcp-timescaledb         │
-└─────────────────┘             └─────────────────┘        │ └── docker-compose.yml      │
+│ Claude Code CLI │────────┐    │ Custom Built    │        │ projects/mcp/postgres       │
+│ (stdio/HTTP)    │        │    │ mcp-proxy       │────────│ ├── mcp-postgres            │
+├─────────────────┤        │    │ + Docker CLI    │        │ └── docker-compose.yml      │
+│ Gemini CLI      │────────┼────│                 │        ├─────────────────────────────┤
+│ (HTTP)          │        │    │ HTTP Server     │────────│ projects/mcp/filesystem     │
+├─────────────────┤        │    │ Port: 9090      │        │ ├── mcp-filesystem          │
+│ ChatGPT Codex   │────────┤    │                 │        │ └── docker-compose.yml      │
+│ (HTTP)          │        │    │ stdio via       │        ├─────────────────────────────┤
+├─────────────────┤        │    │ docker exec     │────────│ projects/mcp/fetch          │
+│ Open-WebUI      │────────┤    │                 │        │ ├── mcp-fetch               │
+│ (HTTP)          │        │    │ SSE/HTTP        │        │ └── docker-compose.yml      │
+├─────────────────┤        │    │ direct connect  │        ├─────────────────────────────┤
+│ VS Code         │────────┘    │                 │────────│ projects/mcp/timescaledb    │
+│ (HTTP/stdio)    │             └─────────────────┘        │ ├── mcp-timescaledb         │
+└─────────────────┘                                        │ └── docker-compose.yml      │
                                                            └─────────────────────────────┘
 ```
 
@@ -59,16 +87,24 @@ External Clients                Central Proxy              Individual MCP Servic
 
 ### Phase 1: Core Infrastructure Setup (Day 1)
 
-#### 1.1 Network Configuration
+#### 1.1 Enhanced Proxy Build
+```bash
+# Build custom proxy image with Docker CLI
+cd /home/administrator/projects/mcp/proxy
+docker build -t mcp-proxy-enhanced:latest .
+```
+
+#### 1.2 Network Configuration
 ```bash
 # Create dedicated Docker network for MCP services
 docker network create mcp-net --subnet=172.30.0.0/16
 ```
 
-#### 1.2 Base Directory Structure
+#### 1.3 Base Directory Structure
 ```
-projects/mcp-proxy/
+projects/mcp/proxy/
 ├── PLAN.md                     # This file
+├── Dockerfile                  # Enhanced proxy with Docker CLI
 ├── config/
 │   ├── mcp-proxy.json         # Central proxy configuration
 │   └── servers.json           # Individual server definitions
@@ -83,10 +119,11 @@ projects/mcp-proxy/
 └── logs/                      # Proxy and service logs
 ```
 
-#### 1.3 Core Proxy Deployment
-- Deploy TBXark/mcp-proxy container
+#### 1.4 Enhanced Proxy Deployment
+- Build custom Docker image with CLI support
+- Deploy enhanced proxy container
 - Configure basic HTTP server on port 9090
-- Test basic connectivity from linuxserver.lan
+- Test Docker exec capability from proxy container
 
 ### Phase 2: MCP Service Integration (Days 2-3)
 
@@ -109,8 +146,8 @@ projects/mcp/{service}/
 └── README.md                  # Service documentation
 ```
 
-#### 2.3 Configuration Integration
-Each service registered in central `mcp-proxy.json`:
+#### 2.3 Enhanced Configuration Integration
+Each service registered in central `mcp-proxy.json` with robust stdio support:
 ```json
 {
   "servers": [
@@ -118,12 +155,19 @@ Each service registered in central `mcp-proxy.json`:
       "name": "postgres",
       "type": "stdio",
       "command": "docker",
-      "args": ["exec", "mcp-postgres", "python", "-m", "mcp_postgres"]
+      "args": ["exec", "mcp-postgres", "python", "-m", "mcp_postgres"],
+      "cwd": "/",
+      "env": {}
     },
     {
       "name": "filesystem",
       "type": "sse",
       "url": "http://mcp-filesystem:8001/sse"
+    },
+    {
+      "name": "fetch",
+      "type": "streamable-http",
+      "url": "http://mcp-fetch:8002"
     }
   ]
 }
@@ -155,7 +199,7 @@ Each service registered in central `mcp-proxy.json`:
 
 #### 4.1 Security Configuration
 - Network isolation with mcp-net
-- Service authentication (if required)
+- Docker socket security considerations
 - Log aggregation and monitoring
 
 #### 4.2 Health Monitoring
@@ -168,35 +212,14 @@ Each service registered in central `mcp-proxy.json`:
 - Service restart automation
 - Disaster recovery documentation
 
-## Detailed Configuration Specifications
+## Enhanced Configuration Specifications
 
-### TBXark/mcp-proxy Configuration
-
-#### Base Configuration (`config/mcp-proxy.json`)
-```json
-{
-  "server": {
-    "host": "0.0.0.0",
-    "port": 9090
-  },
-  "servers": [],
-  "logging": {
-    "level": "info",
-    "file": "/logs/mcp-proxy.log"
-  },
-  "cors": {
-    "enabled": true,
-    "origins": ["*"]
-  }
-}
-```
-
-#### Docker Deployment (`docker-compose.yml`)
+### Custom Proxy Deployment (`docker-compose.yml`)
 ```yaml
 version: '3.8'
 services:
   mcp-proxy:
-    image: ghcr.io/tbxark/mcp-proxy:latest
+    build: .  # Use custom Dockerfile with Docker CLI
     container_name: mcp-proxy
     restart: unless-stopped
     ports:
@@ -204,7 +227,7 @@ services:
     volumes:
       - ./config:/config
       - ./logs:/logs
-      - /var/run/docker.sock:/var/run/docker.sock  # For stdio Docker exec
+      - /var/run/docker.sock:/var/run/docker.sock  # Enable docker exec for stdio
     networks:
       - mcp-net
       - default
@@ -219,6 +242,39 @@ services:
 networks:
   mcp-net:
     external: true
+```
+
+### Enhanced Proxy Configuration (`config/mcp-proxy.json`)
+```json
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 9090
+  },
+  "servers": [
+    {
+      "name": "postgres",
+      "type": "stdio",
+      "command": "docker",
+      "args": ["exec", "-i", "mcp-postgres", "python", "-m", "mcp_postgres"],
+      "cwd": "/",
+      "env": {}
+    },
+    {
+      "name": "filesystem",
+      "type": "sse",
+      "url": "http://mcp-filesystem:8001/sse"
+    }
+  ],
+  "logging": {
+    "level": "info",
+    "file": "/logs/mcp-proxy.log"
+  },
+  "cors": {
+    "enabled": true,
+    "origins": ["*"]
+  }
+}
 ```
 
 ### Individual MCP Service Templates
@@ -248,6 +304,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Ensure container stays running for docker exec
+    command: ["python", "-m", "mcp_postgres", "--stdio"]
+    stdin_open: true
+    tty: true
 
 networks:
   mcp-net:
@@ -317,7 +377,13 @@ MCP_SERVERS: |
 }
 ```
 
-## Testing and Validation Plan
+## Enhanced Testing and Validation Plan
+
+### Docker CLI Validation
+1. **Custom Image Build**: Verify enhanced proxy builds successfully
+2. **Docker Socket Access**: Confirm proxy can access Docker daemon
+3. **Container Execution**: Test `docker exec` commands work from proxy
+4. **stdio Transport**: Verify bidirectional communication with MCP services
 
 ### Functional Tests
 1. **Proxy Health**: Verify proxy starts and responds on port 9090
@@ -327,33 +393,36 @@ MCP_SERVERS: |
 5. **Transport Types**: Test stdio, HTTP, and SSE transport modes
 
 ### Integration Tests
-1. **Database Operations**: Execute SQL queries through mcp-postgres
-2. **File Operations**: Read/write files through mcp-filesystem
-3. **Web Fetching**: Retrieve web content through mcp-fetch
+1. **Database Operations**: Execute SQL queries through mcp-postgres (stdio)
+2. **File Operations**: Read/write files through mcp-filesystem (SSE)
+3. **Web Fetching**: Retrieve web content through mcp-fetch (HTTP)
 4. **Cross-Service**: Test workflows using multiple MCP services
 
-### Performance Tests
-1. **Concurrent Requests**: Multiple clients accessing simultaneously
-2. **Large Responses**: Handle large data returns from services
-3. **Network Latency**: Test performance across LAN
-4. **Resource Usage**: Monitor proxy and service resource consumption
+### Security Validation
+1. **Container Isolation**: Verify proper network segmentation
+2. **Docker Socket**: Confirm appropriate access controls
+3. **LAN Only**: Test external access is properly blocked
+4. **Service Authentication**: Validate MCP service access controls
 
-## Rollback and Recovery Plans
+## Risk Assessment and Mitigation - Updated
 
-### Configuration Rollback
-- Keep previous working configurations in `config/backup/`
-- Automated config validation before deployment
-- Quick rollback script for emergency situations
+### Technical Risks
+| Risk | Impact | Probability | Mitigation |
+|------|--------|-------------|------------|
+| Docker CLI missing | High | **Low** (eliminated by custom build) | Custom Dockerfile with CLI |
+| stdio transport failure | High | **Low** (addressed) | Enhanced container configuration |
+| Proxy failure | High | Low | Health monitoring, auto-restart, backup proxy |
+| Service incompatibility | Medium | Medium | Thorough testing, version pinning |
+| Network issues | Medium | Low | Network monitoring, redundant paths |
+| Client compatibility | Medium | Medium | Multi-client testing, documentation |
 
-### Service Recovery
-- Individual service restart procedures
-- Proxy restart without affecting running services
-- Network connectivity restoration procedures
-
-### Disaster Recovery
-- Complete infrastructure rebuild procedures
-- Configuration and data backup locations
-- Emergency contact and escalation procedures
+### Security Considerations
+| Concern | Assessment | Mitigation |
+|---------|------------|------------|
+| Docker socket access | Medium | LAN-only deployment, consistent with existing tools |
+| Container privileges | Medium | Non-root user in container, principle of least privilege |
+| Network exposure | Low | Internal network only, no external exposure |
+| Service authentication | Medium | MCP-level authentication where supported |
 
 ## Success Metrics
 
@@ -362,6 +431,7 @@ MCP_SERVERS: |
 - **Response Time**: <500ms for tool discovery
 - **Concurrent Users**: Support 10+ simultaneous connections
 - **Service Coverage**: All planned MCP services operational
+- **stdio Reliability**: 100% success rate for Docker exec operations
 
 ### User Experience Metrics
 - **Setup Time**: New client connection in <10 minutes
@@ -369,30 +439,12 @@ MCP_SERVERS: |
 - **Error Rate**: <1% failed tool executions
 - **Documentation**: Complete setup guides for all supported clients
 
-## Risk Assessment and Mitigation
+## Next Steps - Revised
 
-### Technical Risks
-| Risk | Impact | Probability | Mitigation |
-|------|--------|-------------|------------|
-| Proxy failure | High | Low | Health monitoring, auto-restart, backup proxy |
-| Service incompatibility | Medium | Medium | Thorough testing, version pinning |
-| Network issues | Medium | Low | Network monitoring, redundant paths |
-| Client compatibility | Medium | Medium | Multi-client testing, documentation |
-
-### Operational Risks
-| Risk | Impact | Probability | Mitigation |
-|------|--------|-------------|------------|
-| Configuration drift | Medium | Medium | Version control, validation scripts |
-| Service proliferation | Low | High | Standardized deployment procedures |
-| Documentation lag | Medium | High | Automated documentation updates |
-| Knowledge transfer | High | Low | Comprehensive documentation |
-
-## Next Steps
-
-1. **Review and Approve Plan** - Stakeholder review of implementation approach
-2. **Environment Preparation** - Set up base directories and Docker networks
-3. **Proof of Concept** - Deploy minimal proxy with one MCP service
-4. **Iterative Expansion** - Add services incrementally with testing
+1. **Build Enhanced Proxy** - Create custom Docker image with CLI support
+2. **Deploy Proof of Concept** - Single MCP service with stdio transport
+3. **Validate stdio Transport** - Confirm Docker exec functionality
+4. **Expand Service Coverage** - Add remaining MCP services incrementally
 5. **Client Integration** - Connect each client type systematically
 6. **Production Deployment** - Full rollout with monitoring and documentation
 
@@ -403,3 +455,4 @@ MCP_SERVERS: |
 **Estimated Timeline**: 6 days full implementation
 **Dependencies**: Docker, existing postgres/observability infrastructure
 **Success Criteria**: Single MCP endpoint accessible from all target clients on linuxserver.lan
+**Critical Enhancement**: Custom proxy build ensures stdio transport reliability
