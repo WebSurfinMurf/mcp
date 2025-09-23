@@ -198,7 +198,9 @@ Configure Open-WebUI to use MCP→OpenAPI proxy (MCPO):
 2. Register MCPO OpenAPI endpoints in Open-WebUI
 3. Test web-based tool access through OpenAPI layer
 
-**Note**: Open-WebUI uses MCPO (MCP→OpenAPI proxy) rather than direct MCP integration for stability.
+**Important**: MCPO is optional; enable only for Open-WebUI after a quick smoke test, and keep direct SSE to clients as the baseline. Pin MCPO to a tag and test **one** endpoint first (e.g., `postgres`) before adding more.
+
+**Note**: Open-WebUI uses MCPO (MCP→OpenAPI proxy) rather than direct MCP integration for stability, but community reports say reliability varies.
 
 #### 3.3 VS Code Integration
 - Set up MCP extension configuration
@@ -253,6 +255,8 @@ services:
       retries: 3
     environment:
       - NODE_ENV=production
+      - MCP_PROXY_TOKEN=${MCP_PROXY_TOKEN:-changeme-token}
+    stop_grace_period: 10s
 
 networks:
   mcp-net:
@@ -269,9 +273,9 @@ networks:
     "options": {
       "logEnabled": true,
       "panicIfInvalid": false,
-      "authTokens": ["changeme-token"]
-      /* Enable CORS only if browser client needs it:
-      ,"cors": { "origins": ["http://linuxserver.lan:9090"] }
+      "authTokens": ["${MCP_PROXY_TOKEN}"]
+      /* Enable CORS only if browser client needs it (typically for MCPO, not mcp-proxy):
+      ,"cors": { "origins": ["http://linuxserver.lan:9090", "http://linuxserver.lan:3000"] }
       */
     }
   },
@@ -317,6 +321,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+      # Fallback for base images without curl:
+      # test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/localhost/8686'"]
+    stop_grace_period: 10s
 
 networks:
   mcp-net:
@@ -346,6 +353,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+      # Fallback for base images without curl:
+      # test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/localhost/8687'"]
+    stop_grace_period: 10s
 
 networks:
   mcp-net:
@@ -356,7 +366,10 @@ networks:
 
 **Note**: fetch and filesystem services run as stdio inside the proxy via npx/uvx - no separate containers needed.
 
-**Production Tip**: TimescaleDB is PostgreSQL + extensions, so the same postgres-mcp image works perfectly for both services.
+**Production Tips**:
+- TimescaleDB is PostgreSQL + extensions, so the same postgres-mcp image works perfectly for both services
+- Host ports (`48010/48011`) are optional - only needed for direct host-level testing, safe to remove for internal-only access
+- All services must join `mcp-net` so hostnames resolve correctly between containers
 
 ## Client Connection Examples
 
@@ -421,23 +434,26 @@ networks:
 ### Manual SSE Testing (Production Smoke Tests)
 Test SSE endpoints manually with curl:
 ```bash
+# Set token for testing
+export MCP_TOKEN=${MCP_PROXY_TOKEN:-changeme-token}
+
 # Test proxy root health check
 curl -f http://linuxserver.lan:9090/
 
 # Test postgres SSE endpoint (direct container)
-curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/postgres/sse
 
 # Test timescaledb SSE endpoint (second postgres instance)
-curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/timescaledb/sse
 
 # Test fetch SSE endpoint (stdio via proxy npx/uvx)
-curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/fetch/sse
 
 # Test filesystem SSE endpoint (stdio via proxy npx)
-curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/filesystem/sse
 
 # Test authentication failure (should return 401/403)
@@ -466,6 +482,36 @@ curl -N -H 'Accept: text/event-stream' \
 2. **Authentication**: Confirm Bearer token protection works
 3. **LAN Only**: Test external access is properly blocked
 4. **Container Security**: No Docker socket exposure needed
+
+## Production Considerations & Troubleshooting
+
+### Common Issues & Solutions
+
+1. **Tool Name Collisions**
+   - **Issue**: Two backends expose similarly named tools (e.g., both "query")
+   - **Solution**: Use separate SSE endpoints and configure clients to select only needed tools
+   - **Prevention**: Review tool names across services before deployment
+
+2. **SSE Connection Drops**
+   - **Issue**: Long-running SSE connections terminate unexpectedly
+   - **Solution**: Ensure proxy and reverse proxy (if used) have idle timeouts >60s and buffering disabled
+   - **Note**: Future reverse proxy configs should include SSE-specific settings
+
+3. **Environment Token Management**
+   - **Issue**: Need to rotate auth tokens without downtime
+   - **Solution**: Update `MCP_PROXY_TOKEN` environment variable and restart proxy with graceful shutdown
+   - **Best Practice**: Use secrets management system for token storage
+
+### Future Reverse Proxy Notes
+If fronting with nginx/traefik later:
+```nginx
+# Disable buffering for SSE
+proxy_buffering off;
+proxy_cache off;
+# Increase timeouts
+proxy_read_timeout 300s;
+proxy_send_timeout 300s;
+```
 
 ## Risk Assessment and Mitigation - Updated
 
@@ -523,9 +569,10 @@ curl -N -H 'Accept: text/event-stream' \
 **Final Production Enhancements Applied**:
 - ✅ **Real version pinning**: mcp-proxy:v0.39.1, postgres-mcp:v0.3.0 (verified existing tags)
 - ✅ **Proper stdio version pins**: uvx `--from pkg==ver`, npx `-y pkg@ver` syntax
-- ✅ **SSE-specific health checks**: curl with `Accept: text/event-stream` header
-- ✅ **Cleaned config schema**: removed undocumented `type` field, commented CORS
-- ✅ **MCPO integration path**: MCP→OpenAPI proxy for Open-WebUI reliability
+- ✅ **SSE-specific health checks**: curl with `Accept: text/event-stream` header + TCP fallback
+- ✅ **Environment-driven auth**: `MCP_PROXY_TOKEN` env var for secure token management
+- ✅ **Graceful shutdown**: 10s grace period for long SSE connections
+- ✅ **MCPO integration path**: Optional MCP→OpenAPI proxy with explicit caution notes
 - ✅ **TBXark config validator**: Added converter tool reference for troubleshooting
-- ✅ **Bearer token consistency**: Authorization header across all clients
-- ✅ **Simplified headers**: Removed unnecessary upstream headers
+- ✅ **Production networking**: Optional host ports, mcp-net requirement clarified
+- ✅ **Troubleshooting guide**: Tool collisions, SSE drops, token rotation, reverse proxy notes
