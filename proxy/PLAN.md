@@ -2,8 +2,8 @@
 
 **Project**: Central MCP Server using TBXark/mcp-proxy
 **Target**: Single aggregation point for all MCP services on linuxserver.lan
-**Date**: 2025-09-21
-**Status**: Updated with critical stdio transport refinement
+**Date**: 2025-09-23
+**Status**: Major revision with corrected config schema and SSE-first architecture
 
 ## Requirements Analysis
 
@@ -33,65 +33,51 @@
 
 **Overall Alignment**: 🎯 **Perfect Match** - TBXark/mcp-proxy addresses all requirements directly
 
-## 🔧 Critical Refinement: stdio Transport Docker CLI Support
+## 🔧 Critical Architecture Revision: SSE-First Approach
 
-### The Issue
-The original plan assumed `docker exec` commands would work from within the `mcp-proxy` container. However, the official `ghcr.io/tbxark/mcp-proxy:latest` image likely does not include the Docker CLI client to keep the image lightweight.
+### Key Changes from User Feedback
+Based on detailed analysis of TBXark/mcp-proxy documentation and best practices:
 
-### The Solution
-**Custom Dockerfile with Docker CLI**: Extend the official image to include Docker CLI support while maintaining security best practices.
+1. **Eliminate Docker CLI Complexity**: Avoid `docker exec` stdio transport which requires Docker socket mounting and CLI installation
+2. **SSE-First Strategy**: Use Server-Sent Events (SSE) for containerized MCP services where possible
+3. **Correct Config Schema**: Use `mcpProxy` + `mcpServers` structure as documented
+4. **Built-in stdio Support**: Use proxy's internal `npx`/`uvx` for stdio-only services
+5. **Proper Client Configuration**: Leverage official remote MCP support in Claude Code and VS Code
 
-#### Enhanced Dockerfile (`/home/administrator/projects/mcp/proxy/Dockerfile`)
-```dockerfile
-# Start from the official mcp-proxy image
-FROM ghcr.io/tbxark/mcp-proxy:latest
-
-# Switch to the root user to install packages
-USER root
-
-# Install the Docker CLI client and its dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends docker.io && \
-    rm -rf /var/lib/apt/lists/*
-
-# Switch back to the original non-root user for security
-USER 1000
-```
-
-**Security Note**: The `/var/run/docker.sock:/var/run/docker.sock` volume mount gives the proxy container Docker host control. This is consistent with existing infrastructure tools (Portainer) and appropriate for LAN-only deployment.
+### The SSE Advantage
+- **Security**: No Docker socket exposure required
+- **Reliability**: Direct HTTP/SSE connections vs container exec
+- **Simplicity**: Standard network protocols vs Docker API dependencies
+- **Performance**: Lower overhead than exec-based stdio transport
 
 ## Architecture Overview
 
 ```
-External Clients                Enhanced Proxy             Individual MCP Services
+External Clients                Standard Proxy              Individual MCP Services
 ┌─────────────────┐             ┌─────────────────┐        ┌─────────────────────────────┐
-│ Claude Code CLI │────────┐    │ Custom Built    │        │ projects/mcp/postgres       │
-│ (stdio/HTTP)    │        │    │ mcp-proxy       │────────│ ├── mcp-postgres            │
-├─────────────────┤        │    │ + Docker CLI    │        │ └── docker-compose.yml      │
-│ Gemini CLI      │────────┼────│                 │        ├─────────────────────────────┤
-│ (HTTP)          │        │    │ HTTP Server     │────────│ projects/mcp/filesystem     │
-├─────────────────┤        │    │ Port: 9090      │        │ ├── mcp-filesystem          │
-│ ChatGPT Codex   │────────┤    │                 │        │ └── docker-compose.yml      │
-│ (HTTP)          │        │    │ stdio via       │        ├─────────────────────────────┤
-├─────────────────┤        │    │ docker exec     │────────│ projects/mcp/fetch          │
-│ Open-WebUI      │────────┤    │                 │        │ ├── mcp-fetch               │
-│ (HTTP)          │        │    │ SSE/HTTP        │        │ └── docker-compose.yml      │
-├─────────────────┤        │    │ direct connect  │        ├─────────────────────────────┤
-│ VS Code         │────────┘    │                 │────────│ projects/mcp/timescaledb    │
-│ (HTTP/stdio)    │             └─────────────────┘        │ ├── mcp-timescaledb         │
-└─────────────────┘                                        │ └── docker-compose.yml      │
-                                                           └─────────────────────────────┘
+│ Claude Code CLI │────────┐    │ TBXark          │        │ projects/mcp/postgres       │
+│ (SSE URLs)      │        │    │ mcp-proxy       │   SSE  │ ├── crystaldba/postgres-mcp │
+├─────────────────┤        │    │                 │────────│ └── SSE at :8686/sse        │
+│ VS Code         │────────┼────│ Port: 9090      │        ├─────────────────────────────┤
+│ (SSE URLs)      │        │    │                 │   stdio│ Built-in via npx/uvx:       │
+├─────────────────┤        │    │ Per-service     │────────│ ├── mcp-server-fetch        │
+│ Open-WebUI      │────────┤    │ endpoints:      │        │ └── mcp-server-filesystem   │
+│ (HTTP)          │        │    │ /postgres/sse   │        ├─────────────────────────────┤
+├─────────────────┤        │    │ /fetch/sse      │   SSE  │ projects/mcp/timescaledb    │
+│ Other Clients   │────────┘    │ /filesystem/sse │────────│ ├── postgres-mcp (2nd inst) │
+│ (SSE/HTTP)      │             └─────────────────┘        │ └── SSE at :8687/sse        │
+└─────────────────┘                                        └─────────────────────────────┘
 ```
 
 ## Implementation Action Plan
 
 ### Phase 1: Core Infrastructure Setup (Day 1)
 
-#### 1.1 Enhanced Proxy Build
+#### 1.1 Standard Proxy Deployment
 ```bash
-# Build custom proxy image with Docker CLI
+# No custom build needed - use official image
 cd /home/administrator/projects/mcp/proxy
-docker build -t mcp-proxy-enhanced:latest .
+docker-compose up -d mcp-proxy
 ```
 
 #### 1.2 Network Configuration
@@ -104,10 +90,8 @@ docker network create mcp-net --subnet=172.30.0.0/16
 ```
 projects/mcp/proxy/
 ├── PLAN.md                     # This file
-├── Dockerfile                  # Enhanced proxy with Docker CLI
 ├── config/
-│   ├── mcp-proxy.json         # Central proxy configuration
-│   └── servers.json           # Individual server definitions
+│   └── config.json            # Central proxy configuration (correct schema)
 ├── docker-compose.yml         # Proxy deployment
 ├── scripts/
 │   ├── deploy.sh              # Main deployment script
@@ -119,66 +103,94 @@ projects/mcp/proxy/
 └── logs/                      # Proxy and service logs
 ```
 
-#### 1.4 Enhanced Proxy Deployment
-- Build custom Docker image with CLI support
-- Deploy enhanced proxy container
-- Configure basic HTTP server on port 9090
-- Test Docker exec capability from proxy container
+#### 1.4 Standard Proxy Deployment
+- Deploy official TBXark/mcp-proxy image
+- Configure with correct `mcpProxy`/`mcpServers` schema
+- Set up SSE server on port 9090
+- Test built-in npx/uvx stdio support
 
 ### Phase 2: MCP Service Integration (Days 2-3)
 
-#### 2.1 Priority MCP Services (Community-Supported)
-Based on community adoption and your infrastructure needs:
+#### 2.1 Priority MCP Services (SSE-First Strategy)
+Based on community adoption and reliable transport methods:
 
-1. **mcp-postgres** - Database operations (existing infrastructure)
-2. **mcp-filesystem** - File operations
-3. **mcp-fetch** - Web content retrieval
-4. **mcp-timescaledb** - Time-series data (existing infrastructure)
-5. **mcp-monitoring** - System observability (existing logs/metrics)
+1. **crystaldba/postgres-mcp** - Database operations (SSE transport)
+2. **mcp-server-fetch** - Web content retrieval (stdio via npx)
+3. **mcp-server-filesystem** - File operations (stdio via npx)
+4. **postgres-mcp (TimescaleDB)** - Time-series data (SSE, second instance)
+5. **playwright-mcp** - Browser automation (SSE if available)
 
-#### 2.2 Service Deployment Pattern
-For each MCP service:
+#### 2.2 Service Deployment Patterns
+
+**SSE Services (Containerized):**
 ```bash
 projects/mcp/{service}/
-├── docker-compose.yml         # Service container definition
-├── config/                    # Service-specific configuration
+├── docker-compose.yml         # SSE-enabled container
 ├── .env                       # Service environment variables
 └── README.md                  # Service documentation
 ```
 
-#### 2.3 Enhanced Configuration Integration
-Each service registered in central `mcp-proxy.json` with robust stdio support:
+**stdio Services (Built-in):**
+- Run directly inside proxy via `npx`/`uvx`
+- No separate containers needed
+- Configured in proxy's `config.json`
+
+#### 2.3 Corrected Configuration Schema
+Central proxy configuration uses proper `mcpProxy`/`mcpServers` structure:
 ```json
 {
-  "servers": [
-    {
-      "name": "postgres",
-      "type": "stdio",
-      "command": "docker",
-      "args": ["exec", "mcp-postgres", "python", "-m", "mcp_postgres"],
-      "cwd": "/",
-      "env": {}
-    },
-    {
-      "name": "filesystem",
-      "type": "sse",
-      "url": "http://mcp-filesystem:8001/sse"
-    },
-    {
-      "name": "fetch",
-      "type": "streamable-http",
-      "url": "http://mcp-fetch:8002"
+  "mcpProxy": {
+    "baseURL": "http://linuxserver.lan:9090",
+    "addr": ":9090",
+    "name": "Central MCP Proxy",
+    "type": "sse",
+    "options": {
+      "logEnabled": true,
+      "authTokens": ["changeme-token"]
     }
-  ]
+  },
+  "mcpServers": {
+    "postgres": {
+      "url": "http://mcp-postgres:8686/sse",
+      "headers": {}
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem", "/workspace"]
+    }
+  }
 }
 ```
 
 ### Phase 3: Client Integration (Days 4-5)
 
-#### 3.1 Claude Code CLI Setup
-- Configure `.claude/mcp_servers.json` to point to proxy
-- Test tool discovery and execution
-- Verify stdio and HTTP connectivity
+#### 3.1 Claude Code CLI Setup (Remote MCP)
+Configure multiple SSE URLs under same base host:
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/postgres/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "fetch": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/fetch/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "filesystem": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/filesystem/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    }
+  }
+}
+```
 
 #### 3.2 Open-WebUI Integration
 - Configure MCP endpoint in Open-WebUI settings
@@ -212,31 +224,29 @@ Each service registered in central `mcp-proxy.json` with robust stdio support:
 - Service restart automation
 - Disaster recovery documentation
 
-## Enhanced Configuration Specifications
+## Drop-in Ready Configuration Files
 
-### Custom Proxy Deployment (`docker-compose.yml`)
+### Standard Proxy Deployment (`docker-compose.yml`)
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
   mcp-proxy:
-    build: .  # Use custom Dockerfile with Docker CLI
+    image: ghcr.io/tbxark/mcp-proxy:latest
     container_name: mcp-proxy
     restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./config:/config
+      - ./config:/config               # contains config.json
       - ./logs:/logs
-      - /var/run/docker.sock:/var/run/docker.sock  # Enable docker exec for stdio
+    command: ["-config", "/config/config.json"]
     networks:
       - mcp-net
-      - default
-    environment:
-      - CONFIG_FILE=/config/mcp-proxy.json
+    # Optional healthcheck: root returns 200
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
 
 networks:
@@ -244,35 +254,32 @@ networks:
     external: true
 ```
 
-### Enhanced Proxy Configuration (`config/mcp-proxy.json`)
+### Corrected Proxy Configuration (`config/config.json`)
 ```json
 {
-  "server": {
-    "host": "0.0.0.0",
-    "port": 9090
-  },
-  "servers": [
-    {
-      "name": "postgres",
-      "type": "stdio",
-      "command": "docker",
-      "args": ["exec", "-i", "mcp-postgres", "python", "-m", "mcp_postgres"],
-      "cwd": "/",
-      "env": {}
-    },
-    {
-      "name": "filesystem",
-      "type": "sse",
-      "url": "http://mcp-filesystem:8001/sse"
+  "mcpProxy": {
+    "baseURL": "http://linuxserver.lan:9090",
+    "addr": ":9090",
+    "name": "Central MCP Proxy",
+    "type": "sse",
+    "options": {
+      "logEnabled": true,
+      "authTokens": ["changeme-token"]
     }
-  ],
-  "logging": {
-    "level": "info",
-    "file": "/logs/mcp-proxy.log"
   },
-  "cors": {
-    "enabled": true,
-    "origins": ["*"]
+  "mcpServers": {
+    "postgres": {
+      "url": "http://mcp-postgres:8686/sse",
+      "headers": {}
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem", "/workspace"]
+    }
   }
 }
 ```
@@ -281,33 +288,20 @@ networks:
 
 #### PostgreSQL MCP Service (`projects/mcp/postgres/docker-compose.yml`)
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
   mcp-postgres:
-    image: mcp/postgres:latest  # Community image or custom build
+    image: crystaldba/postgres-mcp:latest
     container_name: mcp-postgres
     restart: unless-stopped
+    environment:
+      - DATABASE_URI=postgresql://admin:Pass123qp@postgres:5432/postgres
+    command: ["postgres-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8686"]
+    ports:
+      - "48010:8686"                  # optional: only if you want to test from host
     networks:
       - mcp-net
-      - postgres-net  # Connect to existing DB network
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
-    env_file:
-      - .env
-    volumes:
-      - ./config:/config
-    healthcheck:
-      test: ["CMD", "python", "-c", "import mcp_postgres; print('OK')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Ensure container stays running for docker exec
-    command: ["python", "-m", "mcp_postgres", "--stdio"]
-    stdin_open: true
-    tty: true
+      - postgres-net
 
 networks:
   mcp-net:
@@ -316,143 +310,167 @@ networks:
     external: true
 ```
 
-#### Filesystem MCP Service (`projects/mcp/filesystem/docker-compose.yml`)
+#### TimescaleDB MCP Service (`projects/mcp/timescaledb/docker-compose.yml`)
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
-  mcp-filesystem:
-    image: mcp/filesystem:latest
-    container_name: mcp-filesystem
+  mcp-timescaledb:
+    image: crystaldba/postgres-mcp:latest
+    container_name: mcp-timescaledb
     restart: unless-stopped
+    environment:
+      - DATABASE_URI=postgresql://admin:TimescaleSecure2025@timescaledb:5433/timeseries
+    command: ["postgres-mcp", "--transport", "sse", "--host", "0.0.0.0", "--port", "8687"]
     ports:
-      - "8001:8001"  # SSE endpoint
+      - "48011:8687"                  # optional: testing access
     networks:
       - mcp-net
-    volumes:
-      - /home/administrator/projects:/workspace:ro  # Read-only project access
-      - ./config:/config
-    environment:
-      - WORKSPACE_PATH=/workspace
-      - SSE_PORT=8001
-    env_file:
-      - .env
+      - timescaledb-net
+
+networks:
+  mcp-net:
+    external: true
+  timescaledb-net:
+    external: true
 ```
+
+Note: fetch and filesystem services run as stdio inside the proxy via npx/uvx - no separate containers needed.
 
 ## Client Connection Examples
 
-### Claude Code CLI Configuration
+### Claude Code CLI Configuration (Remote MCP - Official Support)
 ```json
 {
   "mcpServers": {
-    "central-mcp": {
-      "command": "curl",
-      "args": ["-X", "POST", "http://linuxserver.lan:9090/mcp"],
-      "env": {}
+    "postgres": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/postgres/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "fetch": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/fetch/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "filesystem": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/filesystem/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "timescaledb": {
+      "type": "sse",
+      "url": "http://linuxserver.lan:9090/timescaledb/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
     }
   }
 }
-```
-
-### Open-WebUI Configuration
-```yaml
-# In Open-WebUI environment
-MCP_SERVERS: |
-  {
-    "central-mcp": {
-      "url": "http://linuxserver.lan:9090",
-      "name": "Central MCP Proxy"
-    }
-  }
 ```
 
 ### VS Code Extension Configuration
 ```json
 {
   "mcp.servers": {
-    "central-mcp": {
-      "transport": "http",
-      "url": "http://linuxserver.lan:9090"
+    "postgres": {
+      "transport": "sse",
+      "url": "http://linuxserver.lan:9090/postgres/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "fetch": {
+      "transport": "sse",
+      "url": "http://linuxserver.lan:9090/fetch/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
     }
   }
 }
 ```
 
-## Enhanced Testing and Validation Plan
+## Testing and Validation Plan - Revised
 
-### Docker CLI Validation
-1. **Custom Image Build**: Verify enhanced proxy builds successfully
-2. **Docker Socket Access**: Confirm proxy can access Docker daemon
-3. **Container Execution**: Test `docker exec` commands work from proxy
-4. **stdio Transport**: Verify bidirectional communication with MCP services
+### Manual SSE Testing
+Test SSE endpoints manually with curl:
+```bash
+# Test postgres SSE endpoint
+curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+  http://linuxserver.lan:9090/postgres/sse
+
+# Test fetch SSE endpoint (stdio via proxy)
+curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+  http://linuxserver.lan:9090/fetch/sse
+```
 
 ### Functional Tests
 1. **Proxy Health**: Verify proxy starts and responds on port 9090
-2. **Service Discovery**: Confirm all MCP services are discoverable through proxy
+2. **Service Discovery**: Confirm all MCP services discoverable via SSE
 3. **Tool Execution**: Test tools from each backend service work correctly
 4. **Multi-Client**: Verify concurrent access from different clients
-5. **Transport Types**: Test stdio, HTTP, and SSE transport modes
+5. **Authentication**: Test Bearer token requirement works correctly
 
 ### Integration Tests
-1. **Database Operations**: Execute SQL queries through mcp-postgres (stdio)
-2. **File Operations**: Read/write files through mcp-filesystem (SSE)
-3. **Web Fetching**: Retrieve web content through mcp-fetch (HTTP)
+1. **Database Operations**: Execute SQL queries through postgres SSE
+2. **File Operations**: Read/write files through filesystem stdio
+3. **Web Fetching**: Retrieve web content through fetch stdio
 4. **Cross-Service**: Test workflows using multiple MCP services
 
 ### Security Validation
-1. **Container Isolation**: Verify proper network segmentation
-2. **Docker Socket**: Confirm appropriate access controls
+1. **Network Isolation**: Verify proper mcp-net segmentation
+2. **Authentication**: Confirm Bearer token protection works
 3. **LAN Only**: Test external access is properly blocked
-4. **Service Authentication**: Validate MCP service access controls
+4. **Container Security**: No Docker socket exposure needed
 
 ## Risk Assessment and Mitigation - Updated
 
-### Technical Risks
+### Technical Risks - Revised
 | Risk | Impact | Probability | Mitigation |
 |------|--------|-------------|------------|
-| Docker CLI missing | High | **Low** (eliminated by custom build) | Custom Dockerfile with CLI |
-| stdio transport failure | High | **Low** (addressed) | Enhanced container configuration |
-| Proxy failure | High | Low | Health monitoring, auto-restart, backup proxy |
-| Service incompatibility | Medium | Medium | Thorough testing, version pinning |
-| Network issues | Medium | Low | Network monitoring, redundant paths |
-| Client compatibility | Medium | Medium | Multi-client testing, documentation |
+| SSE connection failure | Medium | Low | Standard HTTP/SSE protocols, well-tested |
+| Built-in stdio failure | Medium | Low | Official mcp-proxy npx/uvx support |
+| Proxy failure | High | Low | Health monitoring, auto-restart |
+| Service incompatibility | Medium | Medium | Use documented community images |
+| Network issues | Medium | Low | Standard Docker networking |
+| Client compatibility | Low | Low | Official remote MCP support in clients |
 
-### Security Considerations
+### Security Considerations - Improved
 | Concern | Assessment | Mitigation |
 |---------|------------|------------|
-| Docker socket access | Medium | LAN-only deployment, consistent with existing tools |
-| Container privileges | Medium | Non-root user in container, principle of least privilege |
-| Network exposure | Low | Internal network only, no external exposure |
-| Service authentication | Medium | MCP-level authentication where supported |
+| No Docker socket needed | Low | **Eliminated** - no socket exposure required |
+| Bearer token auth | Low | Built-in authentication via authTokens |
+| Network exposure | Low | Internal mcp-net only, no external exposure |
+| Container isolation | Low | Standard Docker isolation, no special privileges |
 
 ## Success Metrics
 
 ### Technical Metrics
 - **Uptime**: >99.5% proxy availability
-- **Response Time**: <500ms for tool discovery
+- **Response Time**: <500ms for SSE connection establishment
 - **Concurrent Users**: Support 10+ simultaneous connections
-- **Service Coverage**: All planned MCP services operational
-- **stdio Reliability**: 100% success rate for Docker exec operations
+- **Service Coverage**: All planned MCP services operational via SSE
+- **SSE Reliability**: 100% success rate for SSE transport
 
 ### User Experience Metrics
-- **Setup Time**: New client connection in <10 minutes
-- **Tool Discovery**: All tools visible from all clients
+- **Setup Time**: New client connection in <5 minutes (simpler config)
+- **Tool Discovery**: All tools visible from all clients via SSE
 - **Error Rate**: <1% failed tool executions
-- **Documentation**: Complete setup guides for all supported clients
+- **Authentication**: Bearer token auth working correctly
 
-## Next Steps - Revised
+## Next Steps - Revised Implementation
 
-1. **Build Enhanced Proxy** - Create custom Docker image with CLI support
-2. **Deploy Proof of Concept** - Single MCP service with stdio transport
-3. **Validate stdio Transport** - Confirm Docker exec functionality
-4. **Expand Service Coverage** - Add remaining MCP services incrementally
-5. **Client Integration** - Connect each client type systematically
-6. **Production Deployment** - Full rollout with monitoring and documentation
+1. **Deploy Standard Proxy** - Use official mcp-proxy image with corrected config
+2. **Configure SSE Services** - Deploy crystaldba/postgres-mcp with SSE transport
+3. **Test Built-in stdio** - Validate npx/uvx stdio services in proxy
+4. **Expand Service Coverage** - Add TimescaleDB and other SSE services
+5. **Client Integration** - Configure Claude Code and VS Code with SSE URLs
+6. **Production Validation** - Full testing with Bearer token authentication
 
 ---
 
 **Implementation Owner**: Claude Code
-**Review Required**: User approval before Phase 1 execution
-**Estimated Timeline**: 6 days full implementation
-**Dependencies**: Docker, existing postgres/observability infrastructure
-**Success Criteria**: Single MCP endpoint accessible from all target clients on linuxserver.lan
-**Critical Enhancement**: Custom proxy build ensures stdio transport reliability
+**Review Status**: ✅ **Major Revision Approved** - SSE-first approach ready
+**Estimated Timeline**: 3-4 days (simplified from original 6 days)
+**Dependencies**: Docker, existing postgres/timescaledb infrastructure
+**Success Criteria**: Multiple SSE endpoints accessible from all target clients on linuxserver.lan
+**Key Improvements**:
+- No Docker socket exposure required
+- Standard protocols (HTTP/SSE) throughout
+- Official client support for remote MCP
+- Simpler configuration and deployment
+- Enhanced security posture
