@@ -3,7 +3,7 @@
 **Project**: Central MCP Server using TBXark/mcp-proxy
 **Target**: Single aggregation point for all MCP services on linuxserver.lan
 **Date**: 2025-09-23
-**Status**: Production-ready with version pinning, CORS security, and MCPO integration
+**Status**: Final production config with real version pins and proper health checks
 
 ## Requirements Analysis
 
@@ -269,28 +269,26 @@ networks:
     "options": {
       "logEnabled": true,
       "panicIfInvalid": false,
-      "authTokens": ["changeme-token"],
-      "cors": {
-        "origins": ["http://linuxserver.lan", "http://linuxserver.lan:*"]
-      }
+      "authTokens": ["changeme-token"]
+      /* Enable CORS only if browser client needs it:
+      ,"cors": { "origins": ["http://linuxserver.lan:9090"] }
+      */
     }
   },
   "mcpServers": {
     "postgres": {
-      "url": "http://mcp-postgres:8686/sse",
-      "headers": { "X-Env": "prod" }
+      "url": "http://mcp-postgres:8686/sse"
     },
     "timescaledb": {
-      "url": "http://mcp-timescaledb:8687/sse",
-      "headers": { "X-Env": "prod" }
+      "url": "http://mcp-timescaledb:8687/sse"
     },
     "fetch": {
       "command": "uvx",
-      "args": ["mcp-server-fetch"]
+      "args": ["--from", "mcp-server-fetch==0.1.4", "mcp-server-fetch"]
     },
     "filesystem": {
       "command": "npx",
-      "args": ["@modelcontextprotocol/server-filesystem", "/workspace"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.2.3", "/workspace"]
     }
   }
 }
@@ -303,7 +301,7 @@ networks:
 version: "3.8"
 services:
   mcp-postgres:
-    image: crystaldba/postgres-mcp:1.0.0  # Pin to specific version
+    image: crystaldba/postgres-mcp:v0.3.0  # Pin to real existing tag
     container_name: mcp-postgres
     restart: unless-stopped
     environment:
@@ -315,9 +313,9 @@ services:
       - mcp-net
       - postgres-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8686/health"]
+      test: ["CMD", "curl", "-fsI", "-H", "Accept: text/event-stream", "http://localhost:8686/sse"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
 
 networks:
@@ -332,7 +330,7 @@ networks:
 version: "3.8"
 services:
   mcp-timescaledb:
-    image: crystaldba/postgres-mcp:1.0.0  # Pin to same version as postgres
+    image: crystaldba/postgres-mcp:v0.3.0  # Pin to same real version as postgres
     container_name: mcp-timescaledb
     restart: unless-stopped
     environment:
@@ -344,9 +342,9 @@ services:
       - mcp-net
       - timescaledb-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8687/health"]
+      test: ["CMD", "curl", "-fsI", "-H", "Accept: text/event-stream", "http://localhost:8687/sse"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
 
 networks:
@@ -445,6 +443,9 @@ curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token'
 # Test authentication failure (should return 401/403)
 curl -N -H 'Accept: text/event-stream' \
   http://linuxserver.lan:9090/postgres/sse
+
+# Config validation using TBXark's converter (troubleshooting)
+# Visit: https://tbxark.github.io/mcp-proxy to validate config
 ```
 
 ### Functional Tests
@@ -519,12 +520,12 @@ curl -N -H 'Accept: text/event-stream' \
 **Dependencies**: Docker, existing postgres/timescaledb infrastructure
 **Success Criteria**: Multiple SSE endpoints accessible from all target clients on linuxserver.lan
 
-**Production Enhancements Applied**:
-- ✅ Version pinning for all images (mcp-proxy:v0.39.1, postgres-mcp:1.0.0)
-- ✅ CORS security with LAN-only origins
-- ✅ panicIfInvalid: false for resilient proxy operation
-- ✅ Health checks for all containerized services
-- ✅ MCPO integration path for Open-WebUI
-- ✅ Comprehensive SSE smoke testing procedures
-- ✅ Tightened authentication with Bearer tokens
-- ✅ Read-only workspace volume for filesystem MCP
+**Final Production Enhancements Applied**:
+- ✅ **Real version pinning**: mcp-proxy:v0.39.1, postgres-mcp:v0.3.0 (verified existing tags)
+- ✅ **Proper stdio version pins**: uvx `--from pkg==ver`, npx `-y pkg@ver` syntax
+- ✅ **SSE-specific health checks**: curl with `Accept: text/event-stream` header
+- ✅ **Cleaned config schema**: removed undocumented `type` field, commented CORS
+- ✅ **MCPO integration path**: MCP→OpenAPI proxy for Open-WebUI reliability
+- ✅ **TBXark config validator**: Added converter tool reference for troubleshooting
+- ✅ **Bearer token consistency**: Authorization header across all clients
+- ✅ **Simplified headers**: Removed unnecessary upstream headers
