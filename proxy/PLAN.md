@@ -3,7 +3,7 @@
 **Project**: Central MCP Server using TBXark/mcp-proxy
 **Target**: Single aggregation point for all MCP services on linuxserver.lan
 **Date**: 2025-09-23
-**Status**: Major revision with corrected config schema and SSE-first architecture
+**Status**: Production-ready with version pinning, CORS security, and MCPO integration
 
 ## Requirements Analysis
 
@@ -192,10 +192,13 @@ Configure multiple SSE URLs under same base host:
 }
 ```
 
-#### 3.2 Open-WebUI Integration
-- Configure MCP endpoint in Open-WebUI settings
-- Test web-based tool access
-- Verify authentication if required
+#### 3.2 Open-WebUI Integration (via MCPO)
+Configure Open-WebUI to use MCP→OpenAPI proxy (MCPO):
+1. Deploy MCPO instances pointing to each MCP SSE endpoint
+2. Register MCPO OpenAPI endpoints in Open-WebUI
+3. Test web-based tool access through OpenAPI layer
+
+**Note**: Open-WebUI uses MCPO (MCP→OpenAPI proxy) rather than direct MCP integration for stability.
 
 #### 3.3 VS Code Integration
 - Set up MCP extension configuration
@@ -226,12 +229,12 @@ Configure multiple SSE URLs under same base host:
 
 ## Drop-in Ready Configuration Files
 
-### Standard Proxy Deployment (`docker-compose.yml`)
+### Production Proxy Deployment (`docker-compose.yml`)
 ```yaml
 version: "3.8"
 services:
   mcp-proxy:
-    image: ghcr.io/tbxark/mcp-proxy:latest
+    image: ghcr.io/tbxark/mcp-proxy:v0.39.1  # Pin to specific release
     container_name: mcp-proxy
     restart: unless-stopped
     ports:
@@ -239,38 +242,47 @@ services:
     volumes:
       - ./config:/config               # contains config.json
       - ./logs:/logs
+      - /home/administrator/projects:/workspace:ro  # Read-only workspace for filesystem MCP
     command: ["-config", "/config/config.json"]
     networks:
       - mcp-net
-    # Optional healthcheck: root returns 200
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/"]
       interval: 30s
       timeout: 5s
       retries: 3
+    environment:
+      - NODE_ENV=production
 
 networks:
   mcp-net:
     external: true
 ```
 
-### Corrected Proxy Configuration (`config/config.json`)
+### Production-Ready Proxy Configuration (`config/config.json`)
 ```json
 {
   "mcpProxy": {
     "baseURL": "http://linuxserver.lan:9090",
     "addr": ":9090",
     "name": "Central MCP Proxy",
-    "type": "sse",
     "options": {
       "logEnabled": true,
-      "authTokens": ["changeme-token"]
+      "panicIfInvalid": false,
+      "authTokens": ["changeme-token"],
+      "cors": {
+        "origins": ["http://linuxserver.lan", "http://linuxserver.lan:*"]
+      }
     }
   },
   "mcpServers": {
     "postgres": {
       "url": "http://mcp-postgres:8686/sse",
-      "headers": {}
+      "headers": { "X-Env": "prod" }
+    },
+    "timescaledb": {
+      "url": "http://mcp-timescaledb:8687/sse",
+      "headers": { "X-Env": "prod" }
     },
     "fetch": {
       "command": "uvx",
@@ -291,7 +303,7 @@ networks:
 version: "3.8"
 services:
   mcp-postgres:
-    image: crystaldba/postgres-mcp:latest
+    image: crystaldba/postgres-mcp:1.0.0  # Pin to specific version
     container_name: mcp-postgres
     restart: unless-stopped
     environment:
@@ -302,6 +314,11 @@ services:
     networks:
       - mcp-net
       - postgres-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8686/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   mcp-net:
@@ -315,7 +332,7 @@ networks:
 version: "3.8"
 services:
   mcp-timescaledb:
-    image: crystaldba/postgres-mcp:latest
+    image: crystaldba/postgres-mcp:1.0.0  # Pin to same version as postgres
     container_name: mcp-timescaledb
     restart: unless-stopped
     environment:
@@ -326,6 +343,11 @@ services:
     networks:
       - mcp-net
       - timescaledb-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8687/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   mcp-net:
@@ -334,7 +356,9 @@ networks:
     external: true
 ```
 
-Note: fetch and filesystem services run as stdio inside the proxy via npx/uvx - no separate containers needed.
+**Note**: fetch and filesystem services run as stdio inside the proxy via npx/uvx - no separate containers needed.
+
+**Production Tip**: TimescaleDB is PostgreSQL + extensions, so the same postgres-mcp image works perfectly for both services.
 
 ## Client Connection Examples
 
@@ -379,6 +403,16 @@ Note: fetch and filesystem services run as stdio inside the proxy via npx/uvx - 
       "transport": "sse",
       "url": "http://linuxserver.lan:9090/fetch/sse",
       "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "filesystem": {
+      "transport": "sse",
+      "url": "http://linuxserver.lan:9090/filesystem/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
+    },
+    "timescaledb": {
+      "transport": "sse",
+      "url": "http://linuxserver.lan:9090/timescaledb/sse",
+      "headers": { "Authorization": "Bearer changeme-token" }
     }
   }
 }
@@ -386,16 +420,31 @@ Note: fetch and filesystem services run as stdio inside the proxy via npx/uvx - 
 
 ## Testing and Validation Plan - Revised
 
-### Manual SSE Testing
+### Manual SSE Testing (Production Smoke Tests)
 Test SSE endpoints manually with curl:
 ```bash
-# Test postgres SSE endpoint
+# Test proxy root health check
+curl -f http://linuxserver.lan:9090/
+
+# Test postgres SSE endpoint (direct container)
 curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
   http://linuxserver.lan:9090/postgres/sse
 
-# Test fetch SSE endpoint (stdio via proxy)
+# Test timescaledb SSE endpoint (second postgres instance)
+curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+  http://linuxserver.lan:9090/timescaledb/sse
+
+# Test fetch SSE endpoint (stdio via proxy npx/uvx)
 curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
   http://linuxserver.lan:9090/fetch/sse
+
+# Test filesystem SSE endpoint (stdio via proxy npx)
+curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token' \
+  http://linuxserver.lan:9090/filesystem/sse
+
+# Test authentication failure (should return 401/403)
+curl -N -H 'Accept: text/event-stream' \
+  http://linuxserver.lan:9090/postgres/sse
 ```
 
 ### Functional Tests
@@ -452,25 +501,30 @@ curl -N -H 'Accept: text/event-stream' -H 'Authorization: Bearer changeme-token'
 - **Error Rate**: <1% failed tool executions
 - **Authentication**: Bearer token auth working correctly
 
-## Next Steps - Revised Implementation
+## Next Steps - Production Implementation
 
-1. **Deploy Standard Proxy** - Use official mcp-proxy image with corrected config
-2. **Configure SSE Services** - Deploy crystaldba/postgres-mcp with SSE transport
+1. **Deploy Pinned Proxy** - Use official mcp-proxy v0.39.1 with production config
+2. **Configure SSE Services** - Deploy crystaldba/postgres-mcp:1.0.0 with SSE transport
 3. **Test Built-in stdio** - Validate npx/uvx stdio services in proxy
-4. **Expand Service Coverage** - Add TimescaleDB and other SSE services
-5. **Client Integration** - Configure Claude Code and VS Code with SSE URLs
-6. **Production Validation** - Full testing with Bearer token authentication
+4. **Expand Service Coverage** - Add TimescaleDB SSE service (port 8687)
+5. **Client Integration** - Configure Claude Code and VS Code with per-service SSE URLs
+6. **MCPO Setup** - Deploy MCP→OpenAPI proxy for Open-WebUI integration
+7. **Production Validation** - Full testing with Bearer token authentication and CORS
 
 ---
 
 **Implementation Owner**: Claude Code
-**Review Status**: ✅ **Major Revision Approved** - SSE-first approach ready
-**Estimated Timeline**: 3-4 days (simplified from original 6 days)
+**Review Status**: ✅ **Production-Ready Plan Approved** - Hardened SSE-first approach
+**Estimated Timeline**: 3-4 days implementation + 1 day MCPO integration
 **Dependencies**: Docker, existing postgres/timescaledb infrastructure
 **Success Criteria**: Multiple SSE endpoints accessible from all target clients on linuxserver.lan
-**Key Improvements**:
-- No Docker socket exposure required
-- Standard protocols (HTTP/SSE) throughout
-- Official client support for remote MCP
-- Simpler configuration and deployment
-- Enhanced security posture
+
+**Production Enhancements Applied**:
+- ✅ Version pinning for all images (mcp-proxy:v0.39.1, postgres-mcp:1.0.0)
+- ✅ CORS security with LAN-only origins
+- ✅ panicIfInvalid: false for resilient proxy operation
+- ✅ Health checks for all containerized services
+- ✅ MCPO integration path for Open-WebUI
+- ✅ Comprehensive SSE smoke testing procedures
+- ✅ Tightened authentication with Bearer tokens
+- ✅ Read-only workspace volume for filesystem MCP
