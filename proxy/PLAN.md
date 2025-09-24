@@ -116,14 +116,14 @@ projects/mcp/proxy/
 
 ### Phase 2: MCP Service Integration (Days 2-3)
 
-#### 2.1 Priority MCP Services (Sidecar Bridge Strategy)
-Based on community adoption and containerized bridge pattern:
+#### 2.1 Priority MCP Services (Management Script Strategy)
+Streamlined deployment using automated management scripts:
 
 1. **crystaldba/postgres-mcp** - Database operations (native SSE transport)
-2. **mcp-server-filesystem** - File operations (stdio→SSE via bridge container)
-3. **mcp-server-fetch** - Web content retrieval (stdio→SSE via bridge container)
+2. **mcp-server-filesystem** - File operations (scaffold + register via scripts)
+3. **mcp-server-fetch** - Web content retrieval (scaffold + register via scripts)
 4. **postgres-mcp (TimescaleDB)** - Time-series data (native SSE, second instance)
-5. **playwright-mcp** - Browser automation (future: stdio→SSE via bridge)
+5. **playwright-mcp** - Browser automation (future: scaffold + register)
 
 #### 2.2 Service Deployment Patterns
 
@@ -142,6 +142,43 @@ projects/mcp/{service}/bridge/
 ├── config/
 │   └── config.json           # Bridge-specific proxy config
 └── README.md                  # Bridge documentation
+```
+
+#### 2.3 Automated Service Registration Workflow
+Streamlined deployment using management scripts for consistency and reliability:
+
+**Step 1: Scaffold Bridge Service**
+```bash
+./add-bridge.sh \
+  --service filesystem \
+  --runtime node \
+  --pkg @modelcontextprotocol/server-filesystem \
+  --version 0.2.3 \
+  --bin-cmd mcp-server-filesystem \
+  --port 9071 \
+  --workspace /home/administrator/projects
+```
+
+**Step 2: Build and Deploy Bridge**
+```bash
+cd /home/administrator/projects/mcp/filesystem/bridge
+docker compose up -d --build
+```
+
+**Step 3: Register with Central Proxy**
+```bash
+export MCP_PROXY_TOKEN="changeme-token"
+./add-to-central.sh \
+  --service filesystem \
+  --port 9071 \
+  --add-auth \
+  --test \
+  --test-token "${MCP_PROXY_TOKEN}"
+```
+
+**Step 4: Verify Registration**
+```bash
+./list-central.sh --format table | column -t
 ```
 
 #### 2.3 Corrected Configuration Schema
@@ -209,6 +246,8 @@ Configure Open-WebUI to use MCP→OpenAPI proxy (MCPO):
 
 **Important**: MCPO is optional; enable only for Open-WebUI after a quick smoke test, and keep direct SSE to clients as the baseline. Pin MCPO to a tag and test **one** endpoint first (e.g., `postgres`) before adding more.
 
+**Security Note**: MCPO typically needs CORS enabled—configure CORS on MCPO containers, not the central MCP proxy, since browser clients hit MCPO directly.
+
 **Note**: Open-WebUI uses MCPO (MCP→OpenAPI proxy) rather than direct MCP integration for stability, but community reports say reliability varies.
 
 #### 3.3 VS Code Integration
@@ -266,6 +305,15 @@ services:
       - NODE_ENV=production
       - MCP_PROXY_TOKEN=${MCP_PROXY_TOKEN:-changeme-token}
     stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   mcp-net:
@@ -371,37 +419,63 @@ networks:
     external: true
 ```
 
-#### Filesystem MCP Bridge Service (`projects/mcp/filesystem/bridge/docker-compose.yml`)
+#### Filesystem MCP Bridge Service
+
+**Dockerfile** (`projects/mcp/filesystem/bridge/Dockerfile`)
+```dockerfile
+# Base: mcp-proxy binary + add Node/npm for the stdio tool
+FROM ghcr.io/tbxark/mcp-proxy:v0.39.1
+
+# Add Node/npm (alpine variant)
+RUN apk add --no-cache nodejs npm
+
+# Preinstall the filesystem MCP to avoid npx network fetch at runtime
+RUN npm i -g @modelcontextprotocol/server-filesystem@0.2.3
+
+WORKDIR /app
+COPY config /config
+
+# Expose the bridge port (cluster-internal)
+EXPOSE 9071
+CMD ["/app/mcp-proxy", "-config", "/config/config.json"]
+```
+
+**Docker Compose** (`projects/mcp/filesystem/bridge/docker-compose.yml`)
 ```yaml
 version: "3.8"
 services:
   mcp-filesystem-bridge:
-    image: ghcr.io/tbxark/mcp-proxy:v0.39.1
+    build: .
+    image: local/mcp-filesystem-bridge:0.2.3-bridge1
     container_name: mcp-filesystem-bridge
     restart: unless-stopped
-    ports:
-      - "9071:9071"  # optional: for direct testing
-    networks:
-      - mcp-net
+    networks: ["mcp-net"]
+    # Do NOT publish in prod; central proxy will consume over mcp-net
+    # ports: ["9071:9071"] # optional for local debugging only
     volumes:
-      - ./config:/config
-      - /home/administrator/projects:/workspace:ro   # filesystem tool needs this
-    command: ["-config", "/config/config.json"]
+      - /home/administrator/projects:/workspace:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9071/"]
       interval: 30s
       timeout: 5s
       retries: 3
-      # Fallback for base images without wget:
-      # test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/localhost/9071'"]
     stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   mcp-net:
     external: true
 ```
 
-#### Filesystem Bridge Configuration (`projects/mcp/filesystem/bridge/config/config.json`)
+**Bridge Configuration** (`projects/mcp/filesystem/bridge/config/config.json`)
 ```json
 {
   "mcpProxy": {
@@ -414,43 +488,65 @@ networks:
   },
   "mcpServers": {
     "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.2.3", "/workspace"]
+      "command": "mcp-server-filesystem",
+      "args": ["/workspace"]
     }
   }
 }
 ```
 
-#### Fetch MCP Bridge Service (`projects/mcp/fetch/bridge/docker-compose.yml`)
+#### Fetch MCP Bridge Service
+
+**Dockerfile** (`projects/mcp/fetch/bridge/Dockerfile`)
+```dockerfile
+FROM ghcr.io/tbxark/mcp-proxy:v0.39.1
+
+# Add Python + pip
+RUN apk add --no-cache python3 py3-pip
+
+# Pin the fetch server version you tested
+RUN pip install --no-cache-dir mcp-server-fetch==0.1.4
+
+WORKDIR /app
+COPY config /config
+
+EXPOSE 9072
+CMD ["/app/mcp-proxy", "-config", "/config/config.json"]
+```
+
+**Docker Compose** (`projects/mcp/fetch/bridge/docker-compose.yml`)
 ```yaml
 version: "3.8"
 services:
   mcp-fetch-bridge:
-    image: ghcr.io/tbxark/mcp-proxy:v0.39.1
+    build: .
+    image: local/mcp-fetch-bridge:0.1.4-bridge1
     container_name: mcp-fetch-bridge
     restart: unless-stopped
-    ports:
-      - "9072:9072"  # optional: for direct testing
-    networks:
-      - mcp-net
-    volumes:
-      - ./config:/config
-    command: ["-config", "/config/config.json"]
+    networks: ["mcp-net"]
+    # ports: ["9072:9072"] # optional for local debugging only
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9072/"]
       interval: 30s
       timeout: 5s
       retries: 3
-      # Fallback for base images without wget:
-      # test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/localhost/9072'"]
     stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   mcp-net:
     external: true
 ```
 
-#### Fetch Bridge Configuration (`projects/mcp/fetch/bridge/config/config.json`)
+**Bridge Configuration** (`projects/mcp/fetch/bridge/config/config.json`)
 ```json
 {
   "mcpProxy": {
@@ -463,19 +559,61 @@ networks:
   },
   "mcpServers": {
     "fetch": {
-      "command": "uvx",
-      "args": ["--from", "mcp-server-fetch==0.1.4", "mcp-server-fetch"]
+      "command": "python3",
+      "args": ["-m", "mcp_server_fetch"]
     }
   }
 }
 ```
 
-**Sidecar Bridge Pattern Benefits**:
-- Each stdio MCP service runs in its own container with individual mcp-proxy bridge
-- All services expose uniform SSE interface to central proxy
-- Easy rollbacks: version each service independently without touching central proxy
-- Clear isolation: filesystem bridge has workspace mount, fetch bridge doesn't need it
-- Host ports (`9071/9072`) are optional - only needed for direct testing
+#### Complete MCP Management Scripts
+
+**1. Bridge Scaffold Script (`/home/administrator/projects/mcp/add-bridge.sh`)**
+```bash
+# Standardized generator for stdio→SSE bridges
+./add-bridge.sh \
+  --service filesystem \
+  --runtime node \
+  --pkg @modelcontextprotocol/server-filesystem \
+  --version 0.2.3 \
+  --bin-cmd mcp-server-filesystem \
+  --port 9071 \
+  --workspace /home/administrator/projects
+```
+
+**2. Central Proxy Registration (`/home/administrator/projects/mcp/add-to-central.sh`)**
+```bash
+# Wire bridge into central proxy with auth and testing
+./add-to-central.sh \
+  --service filesystem \
+  --port 9071 \
+  --add-auth \
+  --test \
+  --test-token "${MCP_PROXY_TOKEN}"
+```
+
+**3. Service Management (`/home/administrator/projects/mcp/list-central.sh`)**
+```bash
+# List current services in table format
+./list-central.sh --format table | column -t
+
+# Get service names only (for scripting)
+./list-central.sh --format names
+```
+
+**4. Service Removal (`/home/administrator/projects/mcp/remove-from-central.sh`)**
+```bash
+# Remove service and verify route is gone
+./remove-from-central.sh --service filesystem --test
+```
+
+**Complete Management Benefits**:
+- **End-to-End Automation**: scaffold → build → register → test → manage lifecycle
+- **Safe Operations**: automatic backups, JSON validation, health checks, rollback capability
+- **Production Ready**: resource limits, log rotation, graceful shutdown, security hardening
+- **Operational Excellence**: jq/python fallbacks, dry-run mode, comprehensive testing
+- **Zero Downtime**: atomic config updates with restart and validation
+- **Scriptable**: all operations support automation and integration with CI/CD pipelines
 
 ## Client Connection Examples
 
@@ -562,9 +700,9 @@ curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
 curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/filesystem/sse
 
-# Test bridge containers directly (optional)
-curl -f http://linuxserver.lan:9071/  # filesystem bridge health
-curl -f http://linuxserver.lan:9072/  # fetch bridge health
+# Test bridge containers directly (only if ports published for debugging)
+# curl -f http://linuxserver.lan:9071/  # filesystem bridge health
+# curl -f http://linuxserver.lan:9072/  # fetch bridge health
 
 # Test authentication failure (should return 401/403)
 curl -N -H 'Accept: text/event-stream' \
@@ -677,12 +815,12 @@ proxy_send_timeout 300s;
 **Success Criteria**: Multiple SSE endpoints accessible from all target clients on linuxserver.lan
 
 **Final Production Enhancements Applied**:
-- ✅ **Sidecar bridge pattern**: stdio MCP services containerized with individual mcp-proxy bridges
-- ✅ **Uniform SSE transport**: All services expose SSE to central proxy for consistent interface
-- ✅ **Real version pinning**: mcp-proxy:v0.39.1 for all containers, postgres-mcp:v0.3.0
-- ✅ **Proper stdio version pins**: uvx `--from pkg==ver`, npx `-y pkg@ver` in bridge configs
-- ✅ **Individual service isolation**: filesystem bridge has workspace mount, fetch bridge isolated
-- ✅ **Environment-driven auth**: `MCP_PROXY_TOKEN` env var for secure token management
-- ✅ **Graceful shutdown**: 10s grace period across all containers for long SSE connections
-- ✅ **Independent versioning**: Each bridge service can be updated without touching central proxy
-- ✅ **Clear directory structure**: Native SSE in `mcp/{service}/`, bridges in `mcp/{service}/bridge/`
+- ✅ **Custom bridge images**: preinstall stdio tools (no runtime npx/uvx network fetches)
+- ✅ **Resource management**: 256M memory limits and log rotation across all containers
+- ✅ **Security hardened**: no published bridge ports in production, internal-only access
+- ✅ **Bridge scaffold script**: standardized generator for all stdio→SSE bridge services
+- ✅ **Reproducible builds**: exact tool versions baked into bridge images
+- ✅ **Isolated blast radius**: bridge failures don't affect central proxy or other services
+- ✅ **Production networking**: cluster-internal communication only, optional debug publishing
+- ✅ **Environment-driven auth**: `MCP_PROXY_TOKEN` with optional bridge authentication
+- ✅ **Operational excellence**: graceful shutdown, health checks, log management
