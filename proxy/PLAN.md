@@ -44,29 +44,34 @@ Based on detailed analysis of TBXark/mcp-proxy documentation and best practices:
 4. **Built-in stdio Support**: Use proxy's internal `npx`/`uvx` for stdio-only services
 5. **Proper Client Configuration**: Leverage official remote MCP support in Claude Code and VS Code
 
-### The SSE Advantage
-- **Security**: No Docker socket exposure required
-- **Reliability**: Direct HTTP/SSE connections vs container exec
-- **Simplicity**: Standard network protocols vs Docker API dependencies
-- **Performance**: Lower overhead than exec-based stdio transport
+### The Sidecar Bridge Pattern
+- **Architecture**: stdio MCP services run in individual bridge containers exposing SSE
+- **Security**: No Docker socket exposure or exec required
+- **Isolation**: Each service is independently containerized and manageable
+- **Uniformity**: All services expose SSE to the central proxy for consistent transport
+- **Scalability**: Easy to add/remove services without touching central proxy
 
 ## Architecture Overview
 
 ```
-External Clients                Standard Proxy              Individual MCP Services
+External Clients                Central Proxy               MCP Service Containers
 ┌─────────────────┐             ┌─────────────────┐        ┌─────────────────────────────┐
 │ Claude Code CLI │────────┐    │ TBXark          │        │ projects/mcp/postgres       │
 │ (SSE URLs)      │        │    │ mcp-proxy       │   SSE  │ ├── crystaldba/postgres-mcp │
-├─────────────────┤        │    │                 │────────│ └── SSE at :8686/sse        │
+├─────────────────┤        │    │                 │────────│ └── Native SSE :8686/sse    │
 │ VS Code         │────────┼────│ Port: 9090      │        ├─────────────────────────────┤
-│ (SSE URLs)      │        │    │                 │   stdio│ Built-in via npx/uvx:       │
-├─────────────────┤        │    │ Per-service     │────────│ ├── mcp-server-fetch        │
-│ Open-WebUI      │────────┤    │ endpoints:      │        │ └── mcp-server-filesystem   │
-│ (HTTP)          │        │    │ /postgres/sse   │        ├─────────────────────────────┤
-├─────────────────┤        │    │ /fetch/sse      │   SSE  │ projects/mcp/timescaledb    │
-│ Other Clients   │────────┘    │ /filesystem/sse │────────│ ├── postgres-mcp (2nd inst) │
-│ (SSE/HTTP)      │             └─────────────────┘        │ └── SSE at :8687/sse        │
-└─────────────────┘                                        └─────────────────────────────┘
+│ (SSE URLs)      │        │    │                 │   SSE  │ projects/mcp/timescaledb    │
+├─────────────────┤        │    │ Per-service     │────────│ ├── postgres-mcp (2nd inst) │
+│ Open-WebUI      │────────┤    │ endpoints:      │        │ └── Native SSE :8687/sse    │
+│ (via MCPO)      │        │    │ /postgres/sse   │        ├─────────────────────────────┤
+├─────────────────┤        │    │ /fetch/sse      │   SSE  │ projects/mcp/fetch/bridge   │
+│ Other Clients   │────────┘    │ /filesystem/sse │────────│ ├── mcp-proxy bridge :9072  │
+│ (SSE/HTTP)      │             │ /timescaledb/sse│        │ └── stdio→SSE (uvx fetch)   │
+└─────────────────┘             └─────────────────┘        ├─────────────────────────────┤
+                                                           │ projects/mcp/filesystem/bridge │
+                                                           │ ├── mcp-proxy bridge :9071  │
+                                                           │ └── stdio→SSE (npx filesystem) │
+                                                           └─────────────────────────────┘
 ```
 
 ## Implementation Action Plan
@@ -103,37 +108,41 @@ projects/mcp/proxy/
 └── logs/                      # Proxy and service logs
 ```
 
-#### 1.4 Standard Proxy Deployment
-- Deploy official TBXark/mcp-proxy image
-- Configure with correct `mcpProxy`/`mcpServers` schema
+#### 1.4 Central Proxy Deployment
+- Deploy official TBXark/mcp-proxy image as central aggregator
+- Configure with correct `mcpProxy`/`mcpServers` schema pointing to bridge services
 - Set up SSE server on port 9090
-- Test built-in npx/uvx stdio support
+- No stdio handling in central proxy - all SSE connections to bridges
 
 ### Phase 2: MCP Service Integration (Days 2-3)
 
-#### 2.1 Priority MCP Services (SSE-First Strategy)
-Based on community adoption and reliable transport methods:
+#### 2.1 Priority MCP Services (Sidecar Bridge Strategy)
+Based on community adoption and containerized bridge pattern:
 
-1. **crystaldba/postgres-mcp** - Database operations (SSE transport)
-2. **mcp-server-fetch** - Web content retrieval (stdio via npx)
-3. **mcp-server-filesystem** - File operations (stdio via npx)
-4. **postgres-mcp (TimescaleDB)** - Time-series data (SSE, second instance)
-5. **playwright-mcp** - Browser automation (SSE if available)
+1. **crystaldba/postgres-mcp** - Database operations (native SSE transport)
+2. **mcp-server-filesystem** - File operations (stdio→SSE via bridge container)
+3. **mcp-server-fetch** - Web content retrieval (stdio→SSE via bridge container)
+4. **postgres-mcp (TimescaleDB)** - Time-series data (native SSE, second instance)
+5. **playwright-mcp** - Browser automation (future: stdio→SSE via bridge)
 
 #### 2.2 Service Deployment Patterns
 
-**SSE Services (Containerized):**
+**Native SSE Services:**
 ```bash
 projects/mcp/{service}/
-├── docker-compose.yml         # SSE-enabled container
+├── docker-compose.yml         # Direct SSE-enabled container
 ├── .env                       # Service environment variables
 └── README.md                  # Service documentation
 ```
 
-**stdio Services (Built-in):**
-- Run directly inside proxy via `npx`/`uvx`
-- No separate containers needed
-- Configured in proxy's `config.json`
+**stdio Bridge Services:**
+```bash
+projects/mcp/{service}/bridge/
+├── docker-compose.yml         # Bridge container with mcp-proxy
+├── config/
+│   └── config.json           # Bridge-specific proxy config
+└── README.md                  # Bridge documentation
+```
 
 #### 2.3 Corrected Configuration Schema
 Central proxy configuration uses proper `mcpProxy`/`mcpServers` structure:
@@ -231,7 +240,7 @@ Configure Open-WebUI to use MCP→OpenAPI proxy (MCPO):
 
 ## Drop-in Ready Configuration Files
 
-### Production Proxy Deployment (`docker-compose.yml`)
+### Central Proxy Deployment (`docker-compose.yml`)
 ```yaml
 version: "3.8"
 services:
@@ -244,7 +253,7 @@ services:
     volumes:
       - ./config:/config               # contains config.json
       - ./logs:/logs
-      - /home/administrator/projects:/workspace:ro  # Read-only workspace for filesystem MCP
+      # NO workspace mount - handled by individual bridge services
     command: ["-config", "/config/config.json"]
     networks:
       - mcp-net
@@ -286,13 +295,11 @@ networks:
     "timescaledb": {
       "url": "http://mcp-timescaledb:8687/sse"
     },
-    "fetch": {
-      "command": "uvx",
-      "args": ["--from", "mcp-server-fetch==0.1.4", "mcp-server-fetch"]
-    },
     "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.2.3", "/workspace"]
+      "url": "http://mcp-filesystem-bridge:9071/filesystem/sse"
+    },
+    "fetch": {
+      "url": "http://mcp-fetch-bridge:9072/fetch/sse"
     }
   }
 }
@@ -364,12 +371,111 @@ networks:
     external: true
 ```
 
-**Note**: fetch and filesystem services run as stdio inside the proxy via npx/uvx - no separate containers needed.
+#### Filesystem MCP Bridge Service (`projects/mcp/filesystem/bridge/docker-compose.yml`)
+```yaml
+version: "3.8"
+services:
+  mcp-filesystem-bridge:
+    image: ghcr.io/tbxark/mcp-proxy:v0.39.1
+    container_name: mcp-filesystem-bridge
+    restart: unless-stopped
+    ports:
+      - "9071:9071"  # optional: for direct testing
+    networks:
+      - mcp-net
+    volumes:
+      - ./config:/config
+      - /home/administrator/projects:/workspace:ro   # filesystem tool needs this
+    command: ["-config", "/config/config.json"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9071/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Fallback for base images without wget:
+      # test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/localhost/9071'"]
+    stop_grace_period: 10s
 
-**Production Tips**:
-- TimescaleDB is PostgreSQL + extensions, so the same postgres-mcp image works perfectly for both services
-- Host ports (`48010/48011`) are optional - only needed for direct host-level testing, safe to remove for internal-only access
-- All services must join `mcp-net` so hostnames resolve correctly between containers
+networks:
+  mcp-net:
+    external: true
+```
+
+#### Filesystem Bridge Configuration (`projects/mcp/filesystem/bridge/config/config.json`)
+```json
+{
+  "mcpProxy": {
+    "addr": ":9071",
+    "name": "filesystem-bridge",
+    "options": {
+      "logEnabled": true,
+      "panicIfInvalid": false
+    }
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.2.3", "/workspace"]
+    }
+  }
+}
+```
+
+#### Fetch MCP Bridge Service (`projects/mcp/fetch/bridge/docker-compose.yml`)
+```yaml
+version: "3.8"
+services:
+  mcp-fetch-bridge:
+    image: ghcr.io/tbxark/mcp-proxy:v0.39.1
+    container_name: mcp-fetch-bridge
+    restart: unless-stopped
+    ports:
+      - "9072:9072"  # optional: for direct testing
+    networks:
+      - mcp-net
+    volumes:
+      - ./config:/config
+    command: ["-config", "/config/config.json"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9072/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Fallback for base images without wget:
+      # test: ["CMD-SHELL", "timeout 2 bash -lc '</dev/tcp/localhost/9072'"]
+    stop_grace_period: 10s
+
+networks:
+  mcp-net:
+    external: true
+```
+
+#### Fetch Bridge Configuration (`projects/mcp/fetch/bridge/config/config.json`)
+```json
+{
+  "mcpProxy": {
+    "addr": ":9072",
+    "name": "fetch-bridge",
+    "options": {
+      "logEnabled": true,
+      "panicIfInvalid": false
+    }
+  },
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["--from", "mcp-server-fetch==0.1.4", "mcp-server-fetch"]
+    }
+  }
+}
+```
+
+**Sidecar Bridge Pattern Benefits**:
+- Each stdio MCP service runs in its own container with individual mcp-proxy bridge
+- All services expose uniform SSE interface to central proxy
+- Easy rollbacks: version each service independently without touching central proxy
+- Clear isolation: filesystem bridge has workspace mount, fetch bridge doesn't need it
+- Host ports (`9071/9072`) are optional - only needed for direct testing
 
 ## Client Connection Examples
 
@@ -448,13 +554,17 @@ curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
 curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/timescaledb/sse
 
-# Test fetch SSE endpoint (stdio via proxy npx/uvx)
+# Test fetch SSE endpoint (stdio via bridge container)
 curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/fetch/sse
 
-# Test filesystem SSE endpoint (stdio via proxy npx)
+# Test filesystem SSE endpoint (stdio via bridge container)
 curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/filesystem/sse
+
+# Test bridge containers directly (optional)
+curl -f http://linuxserver.lan:9071/  # filesystem bridge health
+curl -f http://linuxserver.lan:9072/  # fetch bridge health
 
 # Test authentication failure (should return 401/403)
 curl -N -H 'Accept: text/event-stream' \
@@ -552,7 +662,7 @@ proxy_send_timeout 300s;
 
 1. **Deploy Pinned Proxy** - Use official mcp-proxy v0.39.1 with production config
 2. **Configure SSE Services** - Deploy crystaldba/postgres-mcp:1.0.0 with SSE transport
-3. **Test Built-in stdio** - Validate npx/uvx stdio services in proxy
+3. **Deploy Bridge Services** - Create filesystem and fetch bridge containers
 4. **Expand Service Coverage** - Add TimescaleDB SSE service (port 8687)
 5. **Client Integration** - Configure Claude Code and VS Code with per-service SSE URLs
 6. **MCPO Setup** - Deploy MCP→OpenAPI proxy for Open-WebUI integration
@@ -567,12 +677,12 @@ proxy_send_timeout 300s;
 **Success Criteria**: Multiple SSE endpoints accessible from all target clients on linuxserver.lan
 
 **Final Production Enhancements Applied**:
-- ✅ **Real version pinning**: mcp-proxy:v0.39.1, postgres-mcp:v0.3.0 (verified existing tags)
-- ✅ **Proper stdio version pins**: uvx `--from pkg==ver`, npx `-y pkg@ver` syntax
-- ✅ **SSE-specific health checks**: curl with `Accept: text/event-stream` header + TCP fallback
+- ✅ **Sidecar bridge pattern**: stdio MCP services containerized with individual mcp-proxy bridges
+- ✅ **Uniform SSE transport**: All services expose SSE to central proxy for consistent interface
+- ✅ **Real version pinning**: mcp-proxy:v0.39.1 for all containers, postgres-mcp:v0.3.0
+- ✅ **Proper stdio version pins**: uvx `--from pkg==ver`, npx `-y pkg@ver` in bridge configs
+- ✅ **Individual service isolation**: filesystem bridge has workspace mount, fetch bridge isolated
 - ✅ **Environment-driven auth**: `MCP_PROXY_TOKEN` env var for secure token management
-- ✅ **Graceful shutdown**: 10s grace period for long SSE connections
-- ✅ **MCPO integration path**: Optional MCP→OpenAPI proxy with explicit caution notes
-- ✅ **TBXark config validator**: Added converter tool reference for troubleshooting
-- ✅ **Production networking**: Optional host ports, mcp-net requirement clarified
-- ✅ **Troubleshooting guide**: Tool collisions, SSE drops, token rotation, reverse proxy notes
+- ✅ **Graceful shutdown**: 10s grace period across all containers for long SSE connections
+- ✅ **Independent versioning**: Each bridge service can be updated without touching central proxy
+- ✅ **Clear directory structure**: Native SSE in `mcp/{service}/`, bridges in `mcp/{service}/bridge/`
