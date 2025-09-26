@@ -1,0 +1,13 @@
+{
+  "mcpProxy": {
+    "addr": ":9071",
+    "name": "filesystem-bridge",
+    "options": { "logEnabled": true, "panicIfInvalid": false }
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "mcp-server-filesystem",
+      "args": ["/workspace"]
+    }
+  }
+}

@@ -7,21 +7,22 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  mcp-postgres:
+  mcp-timescaledb:
     image: crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b
-    container_name: mcp-postgres
+    container_name: mcp-timescaledb
     restart: unless-stopped
     env_file:
-      - /home/administrator/secrets/mcp-postgres.env
+      - /home/administrator/secrets/mcp-timescaledb.env
     entrypoint: ["/bin/sh", "-c"]
-    command: ["postgres-mcp --access-mode restricted --transport sse --sse-host 0.0.0.0 --sse-port 8686 \"$$DATABASE_URI\""]
+    command: ["postgres-mcp --access-mode restricted --transport sse --sse-host 0.0.0.0 --sse-port 8687 \"$$DATABASE_URI\""]
     networks:
       - mcp-net
       - postgres-net
-    ports:
-      - "48010:8686"
+    # Uncomment to expose on host for debugging only.
+    # ports:
+    #   - "48011:8687"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8686/sse', timeout=5).close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8687/sse', timeout=5).close()"]
       interval: 30s
       timeout: 5s
       retries: 3

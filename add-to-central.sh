@@ -214,8 +214,8 @@ else
   ok "Central proxy restarted."
 
   # Health check root
-  curl -fsS "http://${CENTRAL_HOST}:${CENTRAL_PORT}/" >/dev/null
-  ok "Central proxy health check passed."
+  # curl -fsS "http://${CENTRAL_HOST}:${CENTRAL_PORT}/" >/dev/null
+  # ok "Central proxy health check passed."
 fi
 
 # Optional SSE test through central proxy

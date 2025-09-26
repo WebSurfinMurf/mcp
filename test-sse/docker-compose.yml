@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  mcp-test-sse:
+    build: .
+    container_name: mcp-test-sse
+    restart: unless-stopped
+    networks:
+      - mcp-net
+    ports:
+      - "48020:8000"  # optional host exposure for debugging
+
+networks:
+  mcp-net:
+    external: true
