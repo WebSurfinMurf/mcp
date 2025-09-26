@@ -1,0 +1,17 @@
+{
+  "mcpProxy": {
+    "baseURL": "http://linuxserver.lan:9090",
+    "addr": ":9090",
+    "name": "Central MCP Proxy",
+    "options": {
+      "logEnabled": true,
+      "panicIfInvalid": false,
+      "authTokens": ["__MCP_PROXY_TOKEN__"]
+    }
+  },
+  "mcpServers": {
+    "test": {
+      "url": "http://mcp-test-sse:8000/sse"
+    }
+  }
+}
