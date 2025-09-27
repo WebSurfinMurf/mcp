@@ -35,7 +35,8 @@ fi
 
 TEMPLATE="${TEMPLATE}" OUTPUT="${OUTPUT}" \
 python3 - <<'PY'
-import json, os
+import json
+import os
 
 template_path = os.environ["TEMPLATE"]
 output_path = os.environ["OUTPUT"]
@@ -43,6 +44,12 @@ token = os.environ["MCP_PROXY_TOKEN"]
 
 with open(template_path, "r", encoding="utf-8") as f:
     data = json.load(f)
+
+if os.path.exists(output_path):
+    with open(output_path, "r", encoding="utf-8") as f:
+        current = json.load(f)
+    if isinstance(current, dict) and current.get("mcpServers"):
+        data["mcpServers"] = current["mcpServers"]
 
 options = data.setdefault("mcpProxy", {}).setdefault("options", {})
 options["authTokens"] = [token]

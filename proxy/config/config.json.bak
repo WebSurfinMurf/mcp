@@ -1,23 +1,17 @@
 {
   "mcpProxy": {
-    "baseURL": "http://linuxserver.lan:9090",
+    "baseURL": "http://localhost:9090",
     "addr": ":9090",
     "name": "Central MCP Proxy",
     "options": {
       "logEnabled": true,
       "panicIfInvalid": false,
-      "authTokens": ["__MCP_PROXY_TOKEN__"]
+      "authTokens": ["${MCP_PROXY_TOKEN}"]
     }
   },
   "mcpServers": {
-    "test": {
-      "url": "http://mcp-test-sse:8000/sse"
-    },
     "postgres": {
       "url": "http://mcp-postgres:8686/sse"
-    },
-    "fetch": {
-      "url": "http://mcp-fetch-bridge:9072/fetch/sse"
     }
   }
 }

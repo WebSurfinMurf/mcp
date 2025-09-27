@@ -1,12 +1,12 @@
 # 📋 Project Overview
 Central MCP proxy that aggregates multiple MCP services behind a single Server-Sent Events gateway using TBXark/mcp-proxy. Runs entirely on the local LAN (`linuxserver.lan`) without Traefik or Keycloak.
 
-## 🟢 Current State (2025-09-23)
-- **Status**: ✅ Configuration and compose definitions in place, ready for deployment
+## 🟢 Current State (2025-09-25)
+- **Status**: ✅ Central proxy reachable on the LAN and serving registered MCP services
 - **Proxy Image**: `ghcr.io/tbxark/mcp-proxy:v0.39.1`
-- **Listen Address**: `linuxserver.lan:9090`
-- **Authentication**: Shared bearer token stored in `/home/administrator/secrets/mcp-proxy.env`
-- **Backends wired**: PostgreSQL, TimescaleDB, Filesystem bridge, Fetch bridge (all SSE)
+- **Listen Address**: `http://linuxserver.lan:9090`
+- **Authentication**: Bearer token loaded from `/home/administrator/secrets/mcp-proxy.env`
+- **Backends wired**: PostgreSQL (crystaldba/postgres-mcp) and Fetch bridge; filesystem/timescaledb ready but not registered by default
 
 ## 📝 Recent Work & Changes
 - Added pinned Docker Compose stack and config templating for the central proxy.
@@ -40,11 +40,12 @@ Central Proxy (linuxserver.lan:9090)
 
 ## 🌐 Access & Management
 - Proxy base URL: `http://linuxserver.lan:9090/`
-- Per-service SSE routes:
+- Active SSE routes:
   - `http://linuxserver.lan:9090/postgres/sse`
+  - `http://linuxserver.lan:9090/fetch/sse`
+- Optional (register via `add-to-central.sh`):
   - `http://linuxserver.lan:9090/timescaledb/sse`
   - `http://linuxserver.lan:9090/filesystem/sse`
-  - `http://linuxserver.lan:9090/fetch/sse`
 - Clients must send header `Authorization: Bearer <token from mcp-proxy.env>`.
 
 ## 🔗 Integration Points
@@ -54,12 +55,13 @@ Central Proxy (linuxserver.lan:9090)
 - **Fetch bridge** (`mcp/fetch/bridge`): exposes `mcp-server-fetch` over SSE.
 
 ## 🛠️ Operations
-1. **Set token (once)**
+1. **Manage proxy token**
    ```bash
-   TOKEN=$(openssl rand -hex 32)
-   sed -i "s/changeme-token/${TOKEN}/" /home/administrator/secrets/mcp-proxy.env
+   # Create/update the env file without committing the value
+   install -m 600 /dev/null /home/administrator/secrets/mcp-proxy.env
+   echo "MCP_PROXY_TOKEN=$(openssl rand -hex 32)" > /home/administrator/secrets/mcp-proxy.env
    ```
-2. **Render proxy config**
+2. **Render proxy config (keeps existing services)**
    ```bash
    cd /home/administrator/projects/mcp/proxy
    ./render-config.sh
@@ -90,6 +92,12 @@ Central Proxy (linuxserver.lan:9090)
    curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_PROXY_TOKEN" \
      http://linuxserver.lan:9090/postgres/sse | head
    ```
+6. **Sync Claude CLI configuration**
+   ```bash
+   cd /home/administrator/projects/mcp/proxy
+   ./sync-claude-config.sh
+   ```
+   *Creates `~/.config/claude/mcp-settings.json` pointing at `linuxserver.lan` with the current token.*
 
 ## 🔧 Troubleshooting
 - **Proxy returns 401**: ensure `config/config.json` was rendered after updating token.

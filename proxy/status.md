@@ -1,15 +1,15 @@
 # MCP Proxy Deployment Status
 
-## Current Snapshot (2025-09-24 - UPDATED)
+## Current Snapshot (2025-09-25)
 - **Proxy Container**: `ghcr.io/tbxark/mcp-proxy:v0.39.1` ✅ HEALTHY
 - **Listen Address**: `http://linuxserver.lan:9090` ✅ OPERATIONAL
-- **Auth Token**: `c86f696c4efbb4a7e5f2fa6b84cd3550dde84cfc457f0664a402e59be2d79346`
-- **Rendered Config**: `config/config.json` (generated via `render-config.sh`)
+- **Auth Token Source**: `/home/administrator/secrets/mcp-proxy.env`
+- **Rendered Config**: `config/config.json` (regenerated via `render-config.sh`)
 - **Networks**: `mcp-net` ✅ ALL CONTAINERS CONNECTED
 
 ## Active Backends ✅ ALL OPERATIONAL
 - `test` → `mcp-test-sse` (FastAPI SSE harness on port `8000` in `mcp/test-sse`) ✅
-- `filesystem` → `mcp-filesystem-bridge:9071/filesystem/sse` ✅ **14 tools available**
+- `postgres` → `mcp-postgres:8686/sse` ✅ **Primary database tools**
 - `fetch` → `mcp-fetch-bridge:9072/fetch/sse` ✅ **Web content retrieval**
 
 ## Issues Resolved (2025-09-24)
@@ -48,36 +48,20 @@
 # OUTPUT:
 # SERVICE     URL                                           AUTH_HEADER
 # test        http://mcp-test-sse:8000/sse                 -
-# filesystem  http://mcp-filesystem-bridge:9071/filesystem/sse  -
+# postgres    http://mcp-postgres:8686/sse                 -
 # fetch       http://mcp-fetch-bridge:9072/fetch/sse       -
 ```
 
 ## Client Connection Ready ✅
 **Central Proxy URL**: `http://linuxserver.lan:9090`
-**Authentication**: `Authorization: Bearer c86f696c4efbb4a7e5f2fa6b84cd3550dde84cfc457f0664a402e59be2d79346`
+**Authentication**: `Authorization: Bearer $MCP_PROXY_TOKEN` (load from secrets file)
 
 **Available Endpoints**:
 - `/test/sse` - Test echo service
-- `/filesystem/sse` - File operations (14 tools: read_file, write_file, directory_tree, etc.)
+- `/postgres/sse` - Database tooling via crystaldba/postgres-mcp
 - `/fetch/sse` - Web content retrieval
 
-**Client Configuration Example** (Claude Code CLI):
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "type": "sse",
-      "url": "http://linuxserver.lan:9090/filesystem/sse",
-      "headers": { "Authorization": "Bearer c86f696c4efbb4a7e5f2fa6b84cd3550dde84cfc457f0664a402e59be2d79346" }
-    },
-    "fetch": {
-      "type": "sse",
-      "url": "http://linuxserver.lan:9090/fetch/sse",
-      "headers": { "Authorization": "Bearer c86f696c4efbb4a7e5f2fa6b84cd3550dde84cfc457f0664a402e59be2d79346" }
-    }
-  }
-}
-```
+**Claude CLI setup**: run `./sync-claude-config.sh` to generate `~/.config/claude/mcp-settings.json` with the current token.
 
 ## Next Steps
 - **READY FOR USE**: MCP proxy infrastructure is fully operational
