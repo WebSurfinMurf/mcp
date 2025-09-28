@@ -1,15 +1,15 @@
 services:
-  mcp-timescaledb:
+  mcp-playwright:
     build: .
-    container_name: mcp-timescaledb
+    container_name: mcp-playwright
     restart: unless-stopped
     ports:
-      - "127.0.0.1:48011:8000"
-    networks:
-      - postgres-net
+      - "127.0.0.1:9075:8000"
+    volumes:
+      - /tmp:/tmp:rw
     environment:
-      - MCP_SERVER_NAME=timescaledb
-      - DATABASE_URI=postgresql://tsdbadmin:TimescaleSecure2025@timescaledb:5432/timescale
+      - MCP_SERVER_NAME=playwright
+      - TEMP_PATH=/tmp
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -21,7 +21,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-networks:
-  postgres-net:
-    external: true
+    # Required for Playwright browser automation
+    shm_size: "2gb"
+    security_opt:
+      - seccomp:unconfined

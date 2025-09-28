@@ -1,0 +1,29 @@
+services:
+  mcp-n8n:
+    build: .
+    container_name: mcp-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9074:8000"
+    networks:
+      - n8n-net
+    environment:
+      - MCP_SERVER_NAME=n8n
+      - TEMP_PATH=/tmp
+      - N8N_URL=http://n8n:5678
+      - N8N_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyYTI3YWU4ZS1lOWM1LTQ5MGMtODhhMi0xN2U3YjNmNzBlN2UiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU3OTgwNTQ0LCJleHAiOjE3NjA1MDA4MDB9.60vWSZK2s1nvEmPugHhswZPsJmSVT83ZBEBokd7iRBI
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  n8n-net:
+    external: true

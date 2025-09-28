@@ -2,8 +2,8 @@
 
 **Project**: Central MCP Server using TBXark/mcp-proxy
 **Target**: Single aggregation point for all MCP services on linuxserver.lan
-**Date**: 2025-09-23
-**Status**: Final production config with real version pins and proper health checks
+**Date**: 2025-09-27
+**Status**: Phase 1 complete; core services (postgres, fetch) live via proxy; remaining endpoints pending
 
 ## Requirements Analysis
 
@@ -74,56 +74,35 @@ External Clients                Central Proxy               MCP Service Containe
                                                            └─────────────────────────────┘
 ```
 
+## Progress Summary (2025-09-27)
+- ✅ `mcp-proxy` deployed on `linuxserver.lan:9090` with bearer-token auth and health checks
+- ✅ Native `postgres` MCP and `fetch` stdio bridge registered; curl and Claude CLI connectivity verified from LAN hosts
+- ✅ `render-config.sh` updated to preserve existing services; `sync-claude-config.sh` added for client config drift
+- ✅ Documentation refreshed (`CLAUDE.md`, `status.md`, `installmcp.md`) and secrets redacted from tracked files
+- 🔄 Pending: enable filesystem/timescaledb bridges, expand client coverage (VS Code, MCPO), add runtime monitoring hooks
+
 ## Implementation Action Plan
 
-### Phase 1: Core Infrastructure Setup (Day 1)
+### Phase 1: Core Infrastructure Setup – **Completed**
+- [x] Create and attach `mcp-net` network (shared with existing services)
+- [x] Deploy `mcp-proxy` (ghcr.io/tbxark/mcp-proxy:v0.39.1) with health check and bearer-token auth
+- [x] Implement config templating + merge logic (`render-config.sh`) and ignore rendered file in Git
+- [x] Add helper tooling (`add-to-central.sh`, `list-central.sh`, `sync-claude-config.sh`) for controlled updates
 
-#### 1.1 Standard Proxy Deployment
-```bash
-# No custom build needed - use official image
-cd /home/administrator/projects/mcp/proxy
-docker-compose up -d mcp-proxy
-```
+### Phase 2: MCP Service Integration – **In Progress**
 
-#### 1.2 Network Configuration
-```bash
-# Create dedicated Docker network for MCP services
-docker network create mcp-net --subnet=172.30.0.0/16
-```
+| Service | Transport | Status | Notes |
+|---------|-----------|--------|-------|
+| `postgres` (crystaldba/postgres-mcp) | Native SSE @ 8686 | ✅ Live | Registered via proxy; curl + Claude verified |
+| `fetch` bridge | stdio → SSE @ 9072 | ✅ Live | Using pinned `mcp-server-fetch==2025.4.7` |
+| `filesystem` bridge | stdio → SSE @ 9071 | ◻ Pending | Requires RW policy decision; currently read-only plan conflicts with write tools |
+| `timescaledb` (crystaldba/postgres-mcp) | Native SSE @ 8687 | ◻ Pending | Needs dedicated secrets + registration |
+| Additional tools (playwright, minio, n8n, etc.) | TBD | ◻ Backlog | Follow `installmcp.md` workflow per service |
 
-#### 1.3 Base Directory Structure
-```
-projects/mcp/proxy/
-├── PLAN.md                     # This file
-├── config/
-│   └── config.json            # Central proxy configuration (correct schema)
-├── docker-compose.yml         # Proxy deployment
-├── scripts/
-│   ├── deploy.sh              # Main deployment script
-│   ├── health-check.sh        # Service health verification
-│   └── add-mcp-service.sh     # Script to register new MCP services
-├── docs/
-│   ├── CLIENT-SETUP.md        # How to connect different clients
-│   └── TROUBLESHOOTING.md     # Common issues and solutions
-└── logs/                      # Proxy and service logs
-```
-
-#### 1.4 Central Proxy Deployment
-- Deploy official TBXark/mcp-proxy image as central aggregator
-- Configure with correct `mcpProxy`/`mcpServers` schema pointing to bridge services
-- Set up SSE server on port 9090
-- No stdio handling in central proxy - all SSE connections to bridges
-
-### Phase 2: MCP Service Integration (Days 2-3)
-
-#### 2.1 Priority MCP Services (Management Script Strategy)
-Streamlined deployment using automated management scripts:
-
-1. **crystaldba/postgres-mcp** - Database operations (native SSE transport)
-2. **mcp-server-filesystem** - File operations (scaffold + register via scripts)
-3. **mcp-server-fetch** - Web content retrieval (scaffold + register via scripts)
-4. **postgres-mcp (TimescaleDB)** - Time-series data (native SSE, second instance)
-5. **playwright-mcp** - Browser automation (future: scaffold + register)
+**Next immediate goals** *(see `installmcp.md` for detailed workflow)*
+- [ ] Finalise filesystem bridge volume mode (RO vs RW) and, once decided, deploy & register via `add-to-central.sh`
+- [ ] Stand up TimescaleDB MCP container with correct credentials and add to proxy
+- [ ] Prioritise optional bridges (e.g., n8n, minio) using the new runbook; capture service-specific docs
 
 #### 2.2 Service Deployment Patterns
 
@@ -167,7 +146,7 @@ docker compose up -d --build
 
 **Step 3: Register with Central Proxy**
 ```bash
-export MCP_PROXY_TOKEN="changeme-token"
+source /home/administrator/secrets/mcp-proxy.env
 ./add-to-central.sh \
   --service filesystem \
   --port 9071 \
@@ -192,73 +171,30 @@ Central proxy configuration uses proper `mcpProxy`/`mcpServers` structure:
     "type": "sse",
     "options": {
       "logEnabled": true,
-      "authTokens": ["changeme-token"]
+      "authTokens": ["${MCP_PROXY_TOKEN}"]
     }
   },
   "mcpServers": {
     "postgres": {
-      "url": "http://mcp-postgres:8686/sse",
-      "headers": {}
+      "url": "http://mcp-postgres:8686/sse"
     },
     "fetch": {
-      "command": "uvx",
-      "args": ["mcp-server-fetch"]
+      "url": "http://mcp-fetch-bridge:9072/fetch/sse"
     },
     "filesystem": {
-      "command": "npx",
-      "args": ["@modelcontextprotocol/server-filesystem", "/workspace"]
+      "url": "http://mcp-filesystem-bridge:9071/filesystem/sse"
     }
   }
 }
 ```
 
-### Phase 3: Client Integration (Days 4-5)
+### Phase 3: Client Integration – **Partially Complete**
 
-#### 3.1 Claude Code CLI Setup (Remote MCP)
-Configure multiple SSE URLs under same base host:
-```json
-{
-  "mcpServers": {
-    "postgres": {
-      "type": "sse",
-      "url": "http://linuxserver.lan:9090/postgres/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
-    },
-    "fetch": {
-      "type": "sse",
-      "url": "http://linuxserver.lan:9090/fetch/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
-    },
-    "filesystem": {
-      "type": "sse",
-      "url": "http://linuxserver.lan:9090/filesystem/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
-    }
-  }
-}
-```
-
-#### 3.2 Open-WebUI Integration (via MCPO)
-Configure Open-WebUI to use MCP→OpenAPI proxy (MCPO):
-1. Deploy MCPO instances pointing to each MCP SSE endpoint
-2. Register MCPO OpenAPI endpoints in Open-WebUI
-3. Test web-based tool access through OpenAPI layer
-
-**Important**: MCPO is optional; enable only for Open-WebUI after a quick smoke test, and keep direct SSE to clients as the baseline. Pin MCPO to a tag and test **one** endpoint first (e.g., `postgres`) before adding more.
-
-**Security Note**: MCPO typically needs CORS enabled—configure CORS on MCPO containers, not the central MCP proxy, since browser clients hit MCPO directly.
-
-**Note**: Open-WebUI uses MCPO (MCP→OpenAPI proxy) rather than direct MCP integration for stability, but community reports say reliability varies.
-
-#### 3.3 VS Code Integration
-- Set up MCP extension configuration
-- Test remote connection from different machine
-- Document connection parameters
-
-#### 3.4 Additional CLI Tools
-- Gemini CLI configuration
-- ChatGPT Codex CLI setup (if available)
-- Test tool compatibility across clients
+- ✅ **Claude Code CLI**: `sync-claude-config.sh` generates `~/.config/claude/mcp-settings.json` with LAN URLs and live token.
+  - Next: publish instructions for other operator accounts; ensure stale local entries are purged when services move from `localhost` to `linuxserver.lan`.
+- ◻ **VS Code MCP extension**: configure remote URL + token and create usage notes.
+- ◻ **MCPO / Open-WebUI**: optional bridge not yet deployed; when pursued, pin MCPO image, enable CORS there, and register a single endpoint before expanding.
+- ◻ **Other clients (Gemini CLI, ChatGPT Codex CLI)**: evaluate demand, document configuration templates, and test interoperability.
 
 ### Phase 4: Production Hardening (Day 6)
 
@@ -624,26 +560,28 @@ networks:
     "postgres": {
       "type": "sse",
       "url": "http://linuxserver.lan:9090/postgres/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     },
     "fetch": {
       "type": "sse",
       "url": "http://linuxserver.lan:9090/fetch/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     },
     "filesystem": {
       "type": "sse",
       "url": "http://linuxserver.lan:9090/filesystem/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     },
     "timescaledb": {
       "type": "sse",
       "url": "http://linuxserver.lan:9090/timescaledb/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     }
   }
 }
 ```
+
+*(Include only the services currently registered on the proxy; remove inactive entries until they are live.)*
 
 ### VS Code Extension Configuration
 ```json
@@ -652,26 +590,28 @@ networks:
     "postgres": {
       "transport": "sse",
       "url": "http://linuxserver.lan:9090/postgres/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     },
     "fetch": {
       "transport": "sse",
       "url": "http://linuxserver.lan:9090/fetch/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     },
     "filesystem": {
       "transport": "sse",
       "url": "http://linuxserver.lan:9090/filesystem/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     },
     "timescaledb": {
       "transport": "sse",
       "url": "http://linuxserver.lan:9090/timescaledb/sse",
-      "headers": { "Authorization": "Bearer changeme-token" }
+      "headers": { "Authorization": "Bearer ${MCP_PROXY_TOKEN}" }
     }
   }
 }
 ```
+
+*(VS Code supports the same headers; keep only active services to reduce warning pop-ups.)*
 
 ## Testing and Validation Plan - Revised
 
@@ -679,7 +619,8 @@ networks:
 Test SSE endpoints manually with curl:
 ```bash
 # Set token for testing
-export MCP_TOKEN=${MCP_PROXY_TOKEN:-changeme-token}
+source /home/administrator/secrets/mcp-proxy.env
+export MCP_TOKEN=${MCP_PROXY_TOKEN}
 
 # Test proxy root health check
 curl -f http://linuxserver.lan:9090/
@@ -688,17 +629,15 @@ curl -f http://linuxserver.lan:9090/
 curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/postgres/sse
 
-# Test timescaledb SSE endpoint (second postgres instance)
-curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
-  http://linuxserver.lan:9090/timescaledb/sse
-
 # Test fetch SSE endpoint (stdio via bridge container)
 curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
   http://linuxserver.lan:9090/fetch/sse
 
-# Test filesystem SSE endpoint (stdio via bridge container)
-curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
-  http://linuxserver.lan:9090/filesystem/sse
+# Optional checks once additional services are enabled
+# curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
+#   http://linuxserver.lan:9090/timescaledb/sse
+# curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_TOKEN" \
+#   http://linuxserver.lan:9090/filesystem/sse
 
 # Test bridge containers directly (only if ports published for debugging)
 # curl -f http://linuxserver.lan:9071/  # filesystem bridge health
@@ -798,13 +737,13 @@ proxy_send_timeout 300s;
 
 ## Next Steps - Production Implementation
 
-1. **Deploy Pinned Proxy** - Use official mcp-proxy v0.39.1 with production config
-2. **Configure SSE Services** - Deploy crystaldba/postgres-mcp:1.0.0 with SSE transport
-3. **Deploy Bridge Services** - Create filesystem and fetch bridge containers
-4. **Expand Service Coverage** - Add TimescaleDB SSE service (port 8687)
-5. **Client Integration** - Configure Claude Code and VS Code with per-service SSE URLs
-6. **MCPO Setup** - Deploy MCP→OpenAPI proxy for Open-WebUI integration
-7. **Production Validation** - Full testing with Bearer token authentication and CORS
+1. ✅ **Deploy pinned proxy** – Completed (v0.39.1 live with health checks and LAN base URL)
+2. ✅ **Configure core SSE services** – Postgres native + fetch bridge operational
+3. ◻ **Onboard filesystem bridge** – Resolve RW policy, deploy container, register via script
+4. ◻ **Add TimescaleDB endpoint** – Provision secrets, start second crystaldba instance, register `/timescaledb/sse`
+5. ◻ **Broaden client coverage** – Document VS Code setup, test additional CLIs, publish operator checklist
+6. ◻ **Evaluate MCPO for Open-WebUI** – Optional; run pilot with single backend, ensure CORS + auth alignment
+7. ◻ **Operationalise monitoring** – Hook proxy/service logs into Loki & add curl smoke checks to cron (or monitoring)
 
 ---
 

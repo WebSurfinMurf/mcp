@@ -1,0 +1,26 @@
+services:
+  mcp-filesystem:
+    build: .
+    container_name: mcp-filesystem
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9073:8000"
+    volumes:
+      - /home/administrator/projects:/workspace:ro
+      - /tmp:/tmp:rw
+    user: "0:0"  # Run as root for file access
+    environment:
+      - MCP_SERVER_NAME=filesystem
+      - WORKSPACE_PATH=/workspace
+      - TEMP_PATH=/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
