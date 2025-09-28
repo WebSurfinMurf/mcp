@@ -1,8 +1,8 @@
 # Plan to Resolve `mcp-fetch` Connection Failure (Authoritative)
 
-This plan synthesizes all analyses to resolve the `mcp-fetch` connection failure. The root cause is a broken authentication layer due to an un-rendered template variable in the `mcp-proxy`'s configuration.
+This plan synthesizes all analyses to resolve the `mcp-fetch` connection failure. The root cause is a broken authentication layer due to an un-rendered template variable in the `mcp-proxy`'s configuration, caused by a variable name mismatch.
 
-This plan will fix the configuration rendering, restart the services, and perform a full end-to-end verification.
+This plan will fix the configuration rendering, restart the services, and then perform a full end-to-end verification.
 
 ---
 
