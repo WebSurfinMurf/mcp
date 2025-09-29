@@ -52,12 +52,12 @@ for i in {1..5}; do
     sleep 5
 done
 
-# SSE endpoint verification
+# SSE endpoint verification (5s timeout)
 echo ""
 echo "Verifying SSE endpoint..."
 for i in {1..3}; do
     echo "SSE check attempt $i/3..."
-    response=$(curl -s -i -H "Accept: text/event-stream" http://127.0.0.1:9073/sse 2>/dev/null || echo "")
+    response=$(curl -s -S -i -H "Accept: text/event-stream" --max-time 5 http://127.0.0.1:9073/sse 2>/dev/null || echo "")
     if echo "$response" | grep -q "text/event-stream"; then
         echo "✓ SSE endpoint responding correctly"
         break
@@ -78,7 +78,7 @@ docker exec ${PROJECT_NAME} ls -la /workspace >/dev/null 2>&1 && echo "✓ Works
 # Update main MCP documentation
 echo ""
 echo "Updating documentation..."
-cat >> /home/administrator/projects/mcp/CLAUDE.md << EOF
+cat >> /home/administrator/projects/mcp/CLAUDE.md <<'EOF_DOC'
 
 ## ${SERVICE_NAME} MCP Service
 - **Status**: ✅ Deployed $(date '+%Y-%m-%d %H:%M')
@@ -88,7 +88,7 @@ cat >> /home/administrator/projects/mcp/CLAUDE.md << EOF
 - **Network**: Standalone (no dependencies)
 - **Environment**: /home/administrator/secrets/${PROJECT_NAME}.env
 - **Workspace**: /home/administrator/projects (read-only)
-EOF
+EOF_DOC
 
 echo ""
 echo "====================================="

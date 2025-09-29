@@ -1,36 +1,23 @@
 version: "3.8"
+
 services:
   mcp-proxy:
-    image: ghcr.io/tbxark/mcp-proxy:v0.39.1  # Pin to specific release
+    image: ghcr.io/tbxark/mcp-proxy:latest
     container_name: mcp-proxy
     restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./config:/config               # contains config.json
-      - ./logs:/logs
-      # NO workspace mount - handled by individual bridge services
-    command: ["-config", "/config/config.json"]
+      - ./config.json:/config.json
+      - /home/administrator/projects:/workspace:ro
     networks:
       - mcp-net
+    command: ["-config", "/config.json"]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:9090/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-    environment:
-      - NODE_ENV=production
-      - MCP_PROXY_TOKEN=${MCP_PROXY_TOKEN:-changeme-token}
-    stop_grace_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
   mcp-net:

@@ -1,0 +1,21 @@
+{
+  "mcpProxy": {
+    "addr": ":9090",
+    "baseURL": "http://localhost:9090",
+    "name": "Local MCP Proxy",
+    "type": "streamable-http",
+    "options": {
+      "logEnabled": true,
+      "panicIfInvalid": false
+    }
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.2.3", "/workspace"],
+      "env": {
+        "NODE_NO_WARNINGS": "1"
+      }
+    }
+  }
+}

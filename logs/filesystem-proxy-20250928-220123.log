@@ -1,0 +1,34 @@
+=== Filesystem Proxy Deployment (TBXark community setup) ===
+Run started: Sun Sep 28 10:01:23 PM EDT 2025
+
+--- Ensure docker network mcp-net exists ---
+mcp-net already present
+
+--- Pull latest TBXark/mcp-proxy image (community download) ---
+ mcp-proxy Pulling 
+ mcp-proxy Pulled 
+
+--- Launch/Update proxy via docker compose ---
+ Container mcp-proxy  Running
+
+--- Container status ---
+CONTAINER ID   IMAGE                             COMMAND                  CREATED         STATUS                     PORTS                                       NAMES
+15e6d862fe5c   ghcr.io/tbxark/mcp-proxy:latest   "/main -config /conf…"   3 minutes ago   Up 3 minutes (unhealthy)   0.0.0.0:9090->9090/tcp, :::9090->9090/tcp   mcp-proxy
+
+--- Tail proxy logs (last 50 lines) ---
+2025/09/29 01:58:14 Starting sse server
+2025/09/29 01:58:14 sse server listening on :9090
+2025/09/29 01:58:14 <filesystem> Connecting
+
+--- Wait for service warmup (5s) ---
+--- Streamable HTTP: initialize ---
+ERROR: initialize call returned HTTP 404
+--- Initialize response headers ---
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Mon, 29 Sep 2025 02:01:28 GMT
+Content-Length: 19
+
+--- Initialize response body ---
+404 page not found

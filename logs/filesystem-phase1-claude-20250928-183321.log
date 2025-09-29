@@ -1,0 +1,14 @@
+=== Phase 1 – mcp-filesystem Claude CLI Registration ===
+Sun Sep 28 06:33:21 PM EDT 2025
+
+--- Remove existing registration (ignore errors) ---
+
+--- Add SSE registration ---
+Added SSE MCP server filesystem with URL: http://localhost:9073/sse to user config
+File modified: /home/administrator/projects/.claude.json
+
+--- Current MCP registrations ---
+No MCP servers configured. Use `claude mcp add` to add a server.
+
+--- SSE tool smoke test (non-interactive print) ---
+Invalid API key · Please run /login

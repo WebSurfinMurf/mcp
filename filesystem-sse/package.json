@@ -1,0 +1,13 @@
+{
+  "name": "mcp-filesystem-sse",
+  "version": "0.1.0",
+  "description": "Node SSE wrapper for MCP filesystem service",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server-sse": "^0.1.9"
+  }
+}

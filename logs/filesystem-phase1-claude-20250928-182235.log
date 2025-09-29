@@ -1,0 +1,23 @@
+=== Phase 1 – mcp-filesystem Claude CLI Registration ===
+Sun Sep 28 06:22:35 PM EDT 2025
+
+--- Remove existing registration (ignore errors) ---
+Removed MCP server filesystem from user config
+File modified: /home/administrator/.claude.json
+
+--- Add SSE registration ---
+Added SSE MCP server filesystem with URL: http://localhost:9073/sse to user config
+File modified: /home/administrator/.claude.json
+
+--- Current MCP registrations ---
+Checking MCP server health...
+
+fetch: http://127.0.0.1:9072/fetch/sse (SSE) - ✓ Connected
+minio: python3 /home/administrator/projects/mcp/minio/mcp-bridge.py - ✗ Failed to connect
+n8n: python3 /home/administrator/projects/mcp/n8n/mcp-bridge.py - ✗ Failed to connect
+playwright: python3 /home/administrator/projects/mcp/playwright/mcp-bridge.py - ✗ Failed to connect
+timescaledb: python3 /home/administrator/projects/mcp/timescaledb/mcp-bridge.py - ✗ Failed to connect
+postgres: python3 /home/administrator/projects/mcp/postgres/postgres-mcp-stdio.py - ✓ Connected
+filesystem: http://localhost:9073/sse (SSE) - ✗ Failed to connect
+
+--- SSE tool smoke test ---

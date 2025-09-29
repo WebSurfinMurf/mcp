@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  mcp-filesystem-sse:
+    build:
+      context: .
+    container_name: mcp-filesystem-sse
+    environment:
+      - MCP_STDIO_BRIDGE=/workspace/mcp/filesystem/mcp-bridge.py
+      - MCP_SSE_PORT=9073
+    ports:
+      - "127.0.0.1:9073:9073"
+    networks:
+      - mcp-sse-net
+    volumes:
+      - ../../:/workspace:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+networks:
+  mcp-sse-net:
+    external: true

@@ -1,0 +1,17 @@
+=== Phase 1 – mcp-filesystem Claude CLI Registration ===
+Sun Sep 28 07:05:29 PM EDT 2025
+
+--- Remove existing registration (ignore errors) ---
+Removed MCP server "filesystem" from local config
+File modified: /home/administrator/projects/.claude.json [project: /home/administrator/projects]
+
+--- Add SSE registration ---
+Added SSE MCP server filesystem with URL: http://localhost:9073/sse to local config
+File modified: /home/administrator/projects/.claude.json [project: /home/administrator/projects]
+
+--- Current MCP registrations ---
+Checking MCP server health...
+
+filesystem: http://localhost:9073/sse (SSE) - ✗ Failed to connect
+
+=== End Claude CLI Registration ===

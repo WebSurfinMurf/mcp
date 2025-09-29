@@ -1,0 +1,21 @@
+{
+  "mcpProxy": {
+    "addr": ":9190",
+    "baseURL": "http://127.0.0.1:9190",
+    "name": "Local MCP Proxy",
+    "options": {
+      "logEnabled": true,
+      "panicIfInvalid": false
+    }
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/workspace"
+      ]
+    }
+  }
+}

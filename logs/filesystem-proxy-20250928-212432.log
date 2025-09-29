@@ -1,0 +1,45 @@
+=== Filesystem Proxy Deployment ===
+Sun Sep 28 09:24:32 PM EDT 2025
+
+--- Ensure network exists ---
+--- Start proxy container ---
+mcp-proxy-test
+a3cb6da73d2958b427dd0de721c96ac37fd892961708382cb47a378712f6450e
+--- Inspect proxy logs (tail) ---
+--- Probe available paths ---
+GET / =>
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Mon, 29 Sep 2025 01:24:32 GMT
+Content-Length: 19
+
+404 page not found
+
+GET /filesystem/mcp =>
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Mon, 29 Sep 2025 01:24:32 GMT
+Content-Length: 19
+
+404 page not found
+
+POST /mcp (initial) =>
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Mon, 29 Sep 2025 01:24:32 GMT
+Content-Length: 19
+
+404 page not found
+
+POST /mcp (tools/list) =>
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Mon, 29 Sep 2025 01:24:32 GMT
+Content-Length: 19
+
+404 page not found
+=== End probe ===
