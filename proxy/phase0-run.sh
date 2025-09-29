@@ -104,8 +104,8 @@ sleep 10
 echo
 
 echo "--- Proxy config inside container ---"
-if ! docker exec mcp-proxy cat /config.json; then
-  echo "(unable to read /config.json)"
+if ! docker exec mcp-proxy cat /config/config.json; then
+  echo "(unable to read /config/config.json)"
 fi
 
 echo
