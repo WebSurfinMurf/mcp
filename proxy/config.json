@@ -12,10 +12,43 @@
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.2.3", "/workspace"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.6.2", "/workspace"],
       "env": {
         "NODE_NO_WARNINGS": "1"
       }
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres@0.6.2", "postgresql://admin:Pass123qp@postgres:5432/postgres"],
+      "env": {
+        "NODE_NO_WARNINGS": "1"
+      }
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer@2025.5.12"],
+      "env": {
+        "NODE_NO_WARNINGS": "1"
+      }
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory@2025.9.25"],
+      "env": {
+        "NODE_NO_WARNINGS": "1"
+      }
+    },
+    "minio": {
+      "command": "/wrappers/minio-wrapper.sh",
+      "args": []
+    },
+    "n8n": {
+      "command": "/wrappers/n8n-wrapper.sh",
+      "args": []
+    },
+    "timescaledb": {
+      "command": "/wrappers/timescaledb-wrapper.sh",
+      "args": []
     }
   }
 }
