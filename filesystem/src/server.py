@@ -5,11 +5,18 @@ Provides file system operations via SSE MCP endpoint
 import os
 import json
 import asyncio
+import uuid
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+# Configure logging if not already set by container runtime
+logging.basicConfig(level=logging.INFO)
 import aiofiles
 
 app = FastAPI(title="MCP Filesystem Server", version="1.0.0")
@@ -18,6 +25,18 @@ app = FastAPI(title="MCP Filesystem Server", version="1.0.0")
 WORKSPACE_PATH = os.getenv("WORKSPACE_PATH", "/workspace")
 TEMP_PATH = os.getenv("TEMP_PATH", "/tmp")
 MCP_SERVER_NAME = os.getenv("MCP_SERVER_NAME", "filesystem")
+
+
+@dataclass
+class SessionState:
+    """Track active SSE client sessions."""
+
+    queue: asyncio.Queue[Dict[str, str]] = field(default_factory=asyncio.Queue)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+SESSIONS: Dict[str, SessionState] = {}
+logger = logging.getLogger("mcp-filesystem")
 
 class MCPRequest(BaseModel):
     jsonrpc: str = "2.0"
@@ -211,7 +230,7 @@ async def handle_mcp_request(request: MCPRequest) -> MCPResponse:
             result={
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {},
+                    "tools": {"listChanged": True},
                     "prompts": {},
                     "resources": {}
                 },
@@ -314,64 +333,42 @@ async def health_check():
 
 @app.get("/sse")
 async def sse_endpoint(request: Request):
-    """SSE endpoint for MCP communication"""
-    
-    # Use a queue to manage incoming data from the client
-    request_queue = asyncio.Queue()
+    """SSE endpoint for MCP communication following MCP SSE spec."""
 
-    async def read_requests():
-        """Task to read incoming data from the client and put it on the queue."""
-        async for chunk in request.stream():
-            try:
-                # Assuming one JSON object per chunk for simplicity
-                # A more robust implementation might handle chunk buffering
-                data = chunk.decode('utf-8')
-                if data:
-                    await request_queue.put(data)
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                # Handle potential decoding errors, etc.
-                break
+    session_id = uuid.uuid4().hex
+    sessions_state = SessionState()
+    SESSIONS[session_id] = sessions_state
+
+    base_url = str(request.base_url).rstrip("/")
+    message_url = f"{base_url}/messages?sessionId={session_id}"
 
     async def event_stream():
-        """Generate SSE events by processing requests from the queue."""
-        # Send initial connection event
-        yield f"data: {json.dumps({'type': 'connection', 'server': MCP_SERVER_NAME})}\n\n"
-
-        # Start the task that reads from the client
-        read_task = asyncio.create_task(read_requests())
-
         try:
+            # Protocol handshake
+            handshake = {"version": "2025-06-18"}
+            yield f"event: mcp-protocol-version\ndata: {json.dumps(handshake)}\n\n"
+            logger.info("SSE session %s sent protocol handshake", session_id)
+
+            # Hint for the message endpoint (comment so Claude ignores it)
+            yield f": message-endpoint {message_url}\n\n"
+            logger.info("SSE session %s advertised endpoint %s", session_id, message_url)
+
             while True:
-                # Wait for a request from the client
-                try:
-                    raw_request = await asyncio.wait_for(request_queue.get(), timeout=300) # 5 min timeout
-                    mcp_request_data = json.loads(raw_request)
-                    mcp_request = MCPRequest(**mcp_request_data)
-                    
-                    # Process the request using the existing handler
-                    mcp_response = await handle_mcp_request(mcp_request)
-                    
-                    # Send the response back to the client
-                    yield f"data: {mcp_response.json()}\n\n"
-
-                except asyncio.TimeoutError:
-                    # If no request for a while, send a ping
-                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
-                except json.JSONDecodeError:
-                    error_resp = MCPResponse(error={"code": -32700, "message": "Parse error in request"})
-                    yield f"data: {error_resp.json()}\n\n"
-
                 if await request.is_disconnected():
                     break
-        
-        except asyncio.CancelledError:
-            pass
-        
+
+                try:
+                    event = await asyncio.wait_for(sessions_state.queue.get(), timeout=30)
+                    event_name = event.get("event", "mcp-json-rpc-2.0")
+                    data = event.get("data", "")
+                    logger.info("SSE session %s sending event %s", session_id, event_name)
+                    yield f"event: {event_name}\ndata: {data}\n\n"
+                except asyncio.TimeoutError:
+                    # Send keepalive comment to prevent idle disconnects
+                    yield ":keepalive\n\n"
         finally:
-            # Clean up the reading task when the connection closes
-            read_task.cancel()
+            SESSIONS.pop(session_id, None)
+            logger.info("SSE session %s closed", session_id)
 
     return StreamingResponse(
         event_stream(),
@@ -381,9 +378,49 @@ async def sse_endpoint(request: Request):
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization"
-        }
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
     )
+
+
+@app.post("/messages", name="mcp_message")
+async def mcp_message(request: Request):
+    """Receive JSON-RPC requests from SSE clients and stream responses."""
+
+    session_id = request.query_params.get("sessionId")
+    session = SESSIONS.get(session_id) if session_id else None
+    if not session:
+        raise HTTPException(status_code=404, detail="Unknown or expired session")
+
+    try:
+        payload = await request.json()
+        mcp_request = MCPRequest(**payload)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid MCP request: {exc}")
+
+    logger.info("Received MCP request %s for session %s", mcp_request.method, session_id)
+    response = await handle_mcp_request(mcp_request)
+
+    response_dict = json.loads(response.model_dump_json())
+    await session.queue.put({
+        "event": "mcp-json-rpc-2.0",
+        "data": json.dumps(response_dict)
+    })
+    logger.info("Queued response event for session %s", session_id)
+
+    if mcp_request.method == "initialize":
+        notification = {
+            "jsonrpc": "2.0",
+            "method": "notifications/tools/list_changed",
+            "params": {}
+        }
+        await session.queue.put({
+            "event": "mcp-json-rpc-2.0",
+            "data": json.dumps(notification)
+        })
+        logger.info("Queued tools/list_changed notification for session %s", session_id)
+
+    return response_dict
 
 @app.post("/mcp")
 async def mcp_endpoint(request: MCPRequest):

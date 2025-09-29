@@ -1,0 +1,43 @@
+=== Phase 0 Baseline Smoke Tests ===
+Sun Sep 28 05:29:12 PM EDT 2025
+
+--- Docker Containers (expect mcp-filesystem running) ---
+NAMES                        STATUS                    PORTS
+mcp-filesystem               Up 18 hours (healthy)     127.0.0.1:9073->8000/tcp
+
+--- /health endpoint ---
+{
+  "status": "healthy",
+  "service": "filesystem",
+  "workspace": "/workspace",
+  "temp": "/tmp"
+}
+
+--- SSE HEADERS (curl --head) ---
+HTTP/1.1 405 Method Not Allowed
+date: Sun, 28 Sep 2025 21:29:12 GMT
+server: uvicorn
+allow: GET
+content-length: 31
+content-type: application/json
+
+
+--- stdio bridge initialize ---
+{"jsonrpc": "2.0", "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}, "prompts": {}, "resources": {}}, "serverInfo": {"name": "filesystem", "version": "1.0.0"}}, "error": null, "id": 1}
+
+--- stdio bridge list_files ---
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"path\": \".\", \"items\": [{\"name\": \"AINotes\", \"type\": \"link\", \"size\": null, \"modified\": null, \"path\": \"AINotes\"}, {\"name\": \"admin\", \"type\": \"directory\", \"size\": null, \"modified\": 1757172836.1810212, \"path\": \"admin\"}, {\"name\": \"ai\", \"type\": \"directory\", \"size\": null, \"modified\": 1757989227.8351595, \"path\": \"ai\"}, {\"name\": \"archive\", \"type\": \"directory\", \"size\": null, \"modified\": 1758573517.993948, \"path\": \"archive\"}, {\"name\": \"backups\", \"type\": \"directory\", \"size\": null, \"modified\": 1756244404.2351284, \"path\": \"backups\"}, {\"name\": \"claude\", \"type\": \"directory\", \"size\": null, \"modified\": 1757160627.110477, \"path\": \"claude\"}, {\"name\": \"dashy\", \"type\": \"directory\", \"size\": null, \"modified\": 1757091790.869127, \"path\": \"dashy\"}, {\"name\": \"data\", \"type\": \"directory\", \"size\": null, \"modified\": 1757857604.4222085, \"path\": \"data\"}, {\"name\": \"devscripts\", \"type\": \"directory\", \"size\": null, \"modified\": 1759092397.0741951, \"path\": \"devscripts\"}, {\"name\": \"docker-mailserver\", \"type\": \"directory\", \"size\": null, \"modified\": 1756350936.6660333, \"path\": \"docker-mailserver\"}, {\"name\": \"dozzle\", \"type\": \"directory\", \"size\": null, \"modified\": 1756766064.3095915, \"path\": \"dozzle\"}, {\"name\": \"drawio\", \"type\": \"directory\", \"size\": null, \"modified\": 1755981094.4003687, \"path\": \"drawio\"}, {\"name\": \"gitlab\", \"type\": \"directory\", \"size\": null, \"modified\": 1756297532.9557853, \"path\": \"gitlab\"}, {\"name\": \"grafana\", \"type\": \"directory\", \"size\": null, \"modified\": 1756776945.7869835, \"path\": \"grafana\"}, {\"name\": \"guacamole\", \"type\": \"directory\", \"size\": null, \"modified\": 1756660712.7627692, \"path\": \"guacamole\"}, {\"name\": \"keycloak\", \"type\": \"directory\", \"size\": null, \"modified\": 1757072665.493645, \"path\": \"keycloak\"}, {\"name\": \"litellm\", \"type\": \"directory\", \"size\": null, \"modified\": 1758503876.4447768, \"path\": \"litellm\"}, {\"name\": \"loki\", \"type\": \"directory\", \"size\": null, \"modified\": 1756765947.0371706, \"path\": \"loki\"}, {\"name\": \"mcp\", \"type\": \"directory\", \"size\": null, \"modified\": 1759094904.85443, \"path\": \"mcp\"}, {\"name\": \"mcp-filesystem-gemini\", \"type\": \"directory\", \"size\": null, \"modified\": 1758849680.79276, \"path\": \"mcp-filesystem-gemini\"}, {\"name\": \"minio\", \"type\": \"directory\", \"size\": null, \"modified\": 1757287856.7682517, \"path\": \"minio\"}, {\"name\": \"mongodb\", \"type\": \"directory\", \"size\": null, \"modified\": 1756126999.0816238, \"path\": \"mongodb\"}, {\"name\": \"n8n\", \"type\": \"directory\", \"size\": null, \"modified\": 1757160455.5759597, \"path\": \"n8n\"}, {\"name\": \"netdata\", \"type\": \"directory\", \"size\": null, \"modified\": 1756770176.7489429, \"path\": \"netdata\"}, {\"name\": \"nextcloud\", \"type\": \"directory\", \"size\": null, \"modified\": 1756056116.4961402, \"path\": \"nextcloud\"}, {\"name\": \"nginx\", \"type\": \"directory\", \"size\": null, \"modified\": 1756125560.1763556, \"path\": \"nginx\"}, {\"name\": \"nginx-main\", \"type\": \"directory\", \"size\": null, \"modified\": 1756049966.8820062, \"path\": \"nginx-main\"}, {\"name\": \"open-webui\", \"type\": \"directory\", \"size\": null, \"modified\": 1757473773.2322023, \"path\": \"open-webui\"}, {\"name\": \"openbao\", \"type\": \"directory\", \"size\": null, \"modified\": 1757075064.197016, \"path\": \"openbao\"}, {\"name\": \"openproject\", \"type\": \"directory\", \"size\": null, \"modified\": 1757067266.2030718, \"path\": \"openproject\"}, {\"name\": \"playwright\", \"type\": \"directory\", \"size\": null, \"modified\": 1757085294.26892, \"path\": \"playwright\"}, {\"name\": \"portainer\", \"type\": \"directory\", \"size\": null, \"modified\": 1756263654.5746214, \"path\": \"portainer\"}, {\"name\": \"postgres\", \"type\": \"directory\", \"size\": null, \"modified\": 1757067389.9177296, \"path\": \"postgres\"}, {\"name\": \"promtail\", \"type\": \"directory\", \"size\": null, \"modified\": 1756945631.5358474, \"path\": \"promtail\"}, {\"name\": \"redis\", \"type\": \"directory\", \"size\": null, \"modified\": 1757858165.22296, \"path\": \"redis\"}, {\"name\": \"secrets\", \"type\": \"link\", \"size\": null, \"modified\": null, \"path\": \"secrets\"}, {\"name\": \"timescaledb\", \"type\": \"directory\", \"size\": null, \"modified\": 1757066805.87555, \"path\": \"timescaledb\"}, {\"name\": \"traefik\", \"type\": \"directory\", \"size\": null, \"modified\": 1758280847.9667795, \"path\": \"traefik\"}, {\"name\": \"claude.json.txt\", \"type\": \"file\", \"size\": 128627, \"modified\": 1758853343.1854842, \"path\": \"claude.json.txt\"}, {\"name\": \"cli.js.txt\", \"type\": \"file\", \"size\": 9403473, \"modified\": 1758853702.305168, \"path\": \"cli.js.txt\"}, {\"name\": \"litellmfiles.md\", \"type\": \"file\", \"size\": 13059, \"modified\": 1758853598.4806376, \"path\": \"litellmfiles.md\"}, {\"name\": \"memory-debug.log\", \"type\": \"file\", \"size\": 313169, \"modified\": 1757189254.184873, \"path\": \"memory-debug.log\"}]}"
+      }
+    ]
+  },
+  "error": null,
+  "id": 2
+}
+
+=== End Phase 0 Baseline ===

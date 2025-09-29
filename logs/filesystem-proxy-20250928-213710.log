@@ -1,0 +1,13 @@
+=== Filesystem Proxy Deployment ===
+Sun Sep 28 09:37:10 PM EDT 2025
+
+--- Ensure network exists ---
+--- Restart proxy container ---
+mcp-proxy-test
+10086583201a71436233f613d4bcf7d307c00b0327e8cf899f9b5d42512d338d
+--- Proxy logs (tail) ---
+
+--- POST tools/list (Streamable HTTP) ---
+404 page not found
+
+HTTP status: 404

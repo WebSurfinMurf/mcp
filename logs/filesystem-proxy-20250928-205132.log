@@ -1,0 +1,33 @@
+=== Filesystem Proxy Deployment ===
+Sun Sep 28 08:51:32 PM EDT 2025
+
+--- Ensure network exists ---
+--- Start proxy container ---
+mcp-proxy-test
+7e6671e3f013d9bc74af2bd1effa9f91794b8eb1ffdd184dbafff1eb6feeb40d
+--- Wait for tools/list response ---
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404
+404

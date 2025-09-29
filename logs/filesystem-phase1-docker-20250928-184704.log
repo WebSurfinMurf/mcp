@@ -1,0 +1,17 @@
+=== mcp-filesystem container logs (last 200 lines) ===
+Sun Sep 28 06:47:04 PM EDT 2025
+
+INFO:     172.24.0.1:56384 - "GET /health HTTP/1.1" 200 OK
+INFO:     172.24.0.1:56400 - "GET /sse HTTP/1.1" 200 OK
+INFO:     172.24.0.1:58760 - "GET /health HTTP/1.1" 200 OK
+INFO:     172.24.0.1:58776 - "GET /sse HTTP/1.1" 200 OK
+INFO:     172.24.0.1:43126 - "GET /sse HTTP/1.1" 200 OK
+INFO:     172.24.0.1:43136 - "POST /messages?sessionId=90c333952e974987ad3c191e53944bdc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46370 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37474 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41344 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57720 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50042 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33206 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42776 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59820 - "GET /health HTTP/1.1" 200 OK
