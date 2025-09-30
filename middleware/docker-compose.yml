@@ -9,7 +9,7 @@ services:
       - "4001:8080"
     networks:
       - mcp-net
-      - litellm-mcp-net
+      - litellm-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -25,5 +25,5 @@ services:
 networks:
   mcp-net:
     external: true
-  litellm-mcp-net:
+  litellm-net:
     external: true
