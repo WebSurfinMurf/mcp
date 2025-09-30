@@ -1,188 +1,271 @@
-# MCP Services Executive Summary
+# MCP Infrastructure - Executive Summary
 
 ## Overview
-This project implements 6 Model Context Protocol (MCP) services providing comprehensive tool access for AI assistants. All services are containerized with dual transport support (SSE for Claude Code CLI, stdio bridges for Codex CLI) and follow security-first design principles.
+Complete Model Context Protocol (MCP) integration providing 48+ tools across 7 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
-**📋 Quick Reference:**
-- **Total Services**: 6 (filesystem, playwright, timescaledb, minio, n8n, postgres)
-- **Total Tools**: 30+ specialized tools across all services
-- **Deployment Guide**: See `projects/mcp/directmcp.md` for complete setup instructions
-- **Service Details**: Each service has detailed `AI.md` documentation in its directory
-
----
-
-## 🗄️ PostgreSQL Database Service (`postgres`)
-**Purpose**: Advanced PostgreSQL database analysis and optimization
-**Transport**: stdio (direct postgres-mcp package execution)
-**Key Capabilities**: Query execution, health analysis, index optimization, performance tuning
-
-**Tools Available**: `execute_sql`, `analyze_db_health`, `analyze_query_indexes`, `analyze_workload_indexes`, `explain_query`
-
-**Executive Summary**: Professional-grade PostgreSQL service using the official crystaldba/postgres-mcp package. Provides industrial-strength database analysis including query optimization, index tuning via Anytime Algorithm, and comprehensive health monitoring. Operates in restricted mode for safety while offering sophisticated performance analysis capabilities.
-
-**Use When**: Database performance tuning, query optimization, health monitoring, schema analysis
-**Detailed Info**: `projects/mcp/postgres/AI.md`
+**Quick Stats:**
+- **MCP Servers**: 7 (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb)
+- **Total Tools**: 48+ specialized capabilities
+- **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
+- **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 
 ---
 
-## ⏰ TimescaleDB Service (`timescaledb`)
-**Purpose**: Time-series database operations and analytics
-**Transport**: Custom FastAPI server with stdio bridge
-**Key Capabilities**: Time-series queries, hypertable management, temporal data analysis
+## Architecture
 
-**Tools Available**: `execute_sql`, `list_databases`, `list_schemas`, `list_objects`, `get_object_details`, `explain_query`
+### Component Stack
+```
+Open WebUI (port 8090)
+    ↓ HTTPS via Traefik
+LiteLLM (port 4000)
+    ↓ Optional (for MCP tools)
+MCP Middleware (port 4001/8080)
+    ↓ JSON-RPC
+TBXark MCP Proxy (port 9090)
+    ↓ stdio/SSE
+Individual MCP Servers (7 services)
+```
 
-**Executive Summary**: Specialized service for TimescaleDB operations with time-series optimization. Connects to dedicated TimescaleDB instance with hypertables, continuous aggregates, and compression features. Ideal for IoT data, metrics analysis, and temporal data processing with TimescaleDB-specific query optimizations.
+### Key Components
 
-**Use When**: Time-series data analysis, IoT sensor queries, performance metrics, historical trends
-**Detailed Info**: `projects/mcp/timescaledb/AI.md`
+**TBXark MCP Proxy** (`projects/mcp/proxy/`)
+- HTTP gateway exposing MCP servers via REST endpoints
+- Routes: `/[server-name]/mcp` (e.g., `/postgres/mcp`)
+- Translates HTTP to MCP stdio protocol
 
----
+**MCP Middleware** (`projects/mcp/middleware/`)
+- OpenAI-compatible `/v1/chat/completions` endpoint
+- Automatic tool injection (48 tools)
+- Tool execution loop (max 5 iterations)
+- Model naming: adds `-mcp` suffix for UI differentiation
 
-## 📁 Filesystem Service (`filesystem`)
-**Purpose**: Secure file system operations within project workspace
-**Transport**: Custom FastAPI server with stdio bridge
-**Key Capabilities**: File/directory operations, safe workspace access, path handling
-
-**Tools Available**: `list_files`, `read_file`, `write_file`, `get_file_info`
-
-**Executive Summary**: Secure file system interface with read-only workspace access and write capabilities limited to `/tmp`. Features intelligent path translation between host and container paths, graceful symlink handling, and comprehensive security boundaries. Essential for code analysis and temporary file operations.
-
-**Use When**: Reading project files, code analysis, temporary file creation, workspace exploration
-**Detailed Info**: `projects/mcp/filesystem/AI.md`
-
----
-
-## 🌐 Web Browser Service (`playwright`)
-**Purpose**: Browser automation and web testing capabilities
-**Transport**: Custom FastAPI server with stdio bridge
-**Key Capabilities**: Web navigation, screenshot capture, element interaction, content extraction
-
-**Tools Available**: `navigate_to`, `take_screenshot`, `click_element`, `fill_form_field`, `get_page_content`, `wait_for_element`
-
-**Executive Summary**: Full-featured browser automation using Playwright with headless Chromium. Supports JavaScript execution, form interactions, and high-quality screenshot capture. Ideal for web testing, automated screenshots, and complex web interactions that require a real browser environment.
-
-**Use When**: Website testing, screenshot collection, form automation, web scraping with JavaScript
-**Detailed Info**: `projects/mcp/playwright/AI.md`
+**Individual MCP Servers** (`projects/mcp/[service]/`)
+- Native MCP protocol implementations
+- Dual transport: SSE for Claude Code CLI, stdio via bridges for Codex
 
 ---
 
-## 🪣 Object Storage Service (`minio`)
-**Purpose**: S3-compatible object storage operations
-**Transport**: Custom FastAPI server with stdio bridge
-**Key Capabilities**: Bucket management, file upload/download, metadata access, storage analytics
+## MCP Servers
 
-**Tools Available**: `list_buckets`, `create_bucket`, `delete_bucket`, `list_objects`, `upload_object`, `download_object`, `delete_object`, `get_object_info`, `get_bucket_size`
+### 📁 Filesystem (9 tools)
+- Workspace: `/workspace` (read-only), `/tmp` (read-write)
+- Tools: list, read, write, search, move, info
+- Path translation: host ↔ container
 
-**Executive Summary**: Complete S3-compatible storage interface with full CRUD operations on buckets and objects. Features streaming uploads/downloads, metadata management, and storage analytics. Connects to internal MinIO instance via isolated network for secure object storage operations.
+### 🗄️ PostgreSQL (1 tool)
+- Connection: postgres:5432/postgres
+- Tool: execute_sql (restricted mode)
+- Primary database operations
 
-**Use When**: Document storage, file backup/archival, large file transfers, static asset management
-**Detailed Info**: `projects/mcp/minio/AI.md`
+### 🌐 Puppeteer (7 tools)
+- Headless Chromium automation
+- Tools: navigate, screenshot, click, evaluate, console
+- Browser-based web interaction
+
+### 🧠 Memory (9 tools)
+- KG (Knowledge Graph) memory storage
+- Tools: entities, relations, search, open_nodes
+- Persistent context storage
+
+### 🪣 MinIO (9 tools)
+- S3-compatible object storage
+- Tools: buckets, objects, upload, download, metadata
+- Connection: minio:9000
+
+### 🔄 N8N (6 tools)
+- Workflow automation (400+ integrations)
+- Tools: workflows, execute, executions, credentials
+- Connection: n8n:5678
+
+### ⏰ TimescaleDB (6 tools)
+- Time-series database operations
+- Tools: execute_sql, schemas, objects, explain
+- Connection: timescaledb:5432
 
 ---
 
-## 🔄 Workflow Automation Service (`n8n`)
-**Purpose**: Workflow automation and API integration management
-**Transport**: Custom FastAPI server with stdio bridge
-**Key Capabilities**: Workflow execution, automation monitoring, credential management, API integrations
+## Open WebUI Integration
 
-**Tools Available**: `get_workflows`, `get_workflow_details`, `activate_workflow`, `execute_workflow`, `get_executions`, `get_credentials`
+### Dual Model Configuration
+Open WebUI offers two model choices:
+1. **claude-sonnet-4-5**: Direct LiteLLM (no MCP tools)
+2. **claude-sonnet-4-5-mcp**: Via middleware (48 MCP tools)
 
-**Executive Summary**: Comprehensive workflow automation interface with access to 400+ service integrations. Enables programmatic workflow execution, monitoring, and management. Connects to n8n instance for complex automation scenarios including data synchronization, notifications, and API orchestration.
+### Configuration
+**Admin Settings → Connections:**
+- Connection 0: `http://litellm:4000/v1` (direct)
+- Connection 1: `http://mcp-middleware:8080/v1` (MCP-enabled)
 
-**Use When**: Data synchronization, automated notifications, API integration, scheduled tasks
-**Detailed Info**: `projects/mcp/n8n/AI.md`
+**Networks Required:**
+- Open WebUI must be on `litellm-mcp-net` network
+- Middleware must be on `mcp-net` and `litellm-mcp-net`
+
+### Special Commands
+- **"list tools"**: Triggers `mcp_list_all_tools` function
+- Returns formatted markdown table organized by server
+- Shows all 48 tools with descriptions
 
 ---
 
-## 🚀 Deployment & Configuration
+## Middleware Details
+
+### Tool Execution Loop
+1. Inject 48 MCP tools into request
+2. Call LiteLLM with tools enabled
+3. If response contains tool_calls:
+   - Execute each tool via MCP proxy
+   - Add results to conversation
+   - Loop back to step 2
+4. Return final answer after tool execution completes
+
+### Tool Naming Convention
+- Format: `mcp_[server]_[toolname]`
+- Example: `mcp_postgres_execute_sql`
+- Middleware routes to correct MCP server automatically
+
+### Endpoints
+- `/v1/chat/completions`: Main proxy with tool execution
+- `/v1/models`: Lists models with `-mcp` suffix
+- `/health`: Service health + tool counts
+- `/reload`: Reload tools from all MCP servers
+
+---
+
+## Deployment
 
 ### Quick Start
 ```bash
-# View all available MCP services
-codex mcp list
+# Start TBXark MCP Proxy
+cd /home/administrator/projects/mcp/proxy
+docker compose up -d
 
-# Test service health
-postgres.execute_sql("SELECT version()")
-filesystem.list_files("/workspace")
+# Start Middleware
+cd /home/administrator/projects/mcp/middleware
+docker compose up -d
+
+# Verify health
+curl http://localhost:4001/health
 ```
 
-### Registration Commands
+### Network Setup
 ```bash
-# Codex CLI (stdio transport)
-codex mcp add postgres python3 /home/administrator/projects/mcp/postgres/postgres-mcp-stdio.py
-codex mcp add timescaledb python3 /home/administrator/projects/mcp/timescaledb/mcp-bridge.py
-codex mcp add filesystem python3 /home/administrator/projects/mcp/filesystem/mcp-bridge.py
-codex mcp add playwright python3 /home/administrator/projects/mcp/playwright/mcp-bridge.py
-codex mcp add minio python3 /home/administrator/projects/mcp/minio/mcp-bridge.py
-codex mcp add n8n python3 /home/administrator/projects/mcp/n8n/mcp-bridge.py
+# Connect Open WebUI to middleware network
+docker network connect litellm-mcp-net open-webui
 
-# Claude Code CLI (SSE transport)
-claude mcp add postgres-direct http://127.0.0.1:48010/sse --transport sse --scope user
-claude mcp add timescaledb http://127.0.0.1:48011/sse --transport sse --scope user
-claude mcp add filesystem http://127.0.0.1:9073/sse --transport sse --scope user
-claude mcp add playwright http://127.0.0.1:9075/sse --transport sse --scope user
-claude mcp add minio http://127.0.0.1:9076/sse --transport sse --scope user
-claude mcp add n8n http://127.0.0.1:9074/sse --transport sse --scope user
+# Verify connectivity
+docker exec open-webui curl http://mcp-middleware:8080/health
 ```
 
-### Architecture Overview
-- **Network Isolation**: Each service operates in dedicated Docker networks
-- **Security Model**: Read-only workspaces, restricted database access, isolated containers
-- **Dual Transport**: SSE endpoints for Claude Code CLI, stdio bridges for Codex CLI
-- **Health Monitoring**: Individual health endpoints and comprehensive logging
+### Configuration Files
+- Proxy: `projects/mcp/proxy/config.json` (MCP server definitions)
+- Middleware: `projects/mcp/middleware/main.py` (tool execution logic)
+- LiteLLM: `projects/litellm/config/config.yaml` (model config)
 
-### Documentation Structure
+---
+
+## Usage Patterns
+
+### From Open WebUI
+1. Select **claude-sonnet-4-5-mcp** model
+2. Ask natural language questions
+3. Claude automatically calls appropriate MCP tools
+4. Middleware executes tools and returns results
+
+### Example Queries
 ```
-projects/mcp/
-├── AI.md                     # This executive summary
-├── directmcp.md             # Complete deployment and registration guide
-├── PLAN.md                  # Original implementation plan
-├── PLAN.status.md           # Implementation status tracking
-└── {service}/
-    ├── AI.md                # Service-specific technical documentation
-    ├── mcp-bridge.py        # Codex CLI stdio bridge
-    ├── docker-compose.yml   # Container configuration
-    └── src/server.py        # Service implementation
+"list tools" → Shows all 48 MCP tools organized by server
+"list postgres databases" → Calls mcp_postgres_execute_sql
+"read the config file" → Calls mcp_filesystem_read_file
+"take screenshot of example.com" → Calls mcp_puppeteer_navigate + screenshot
+```
+
+### From Claude Code CLI
+```bash
+# Register MCP servers (SSE transport)
+claude mcp add postgres-direct http://127.0.0.1:48010/sse --transport sse
+claude mcp add filesystem http://127.0.0.1:9073/sse --transport sse
+# ... etc for all servers
 ```
 
 ---
 
-## 🎯 Best Practices for AI Assistants
+## Monitoring & Health
+
+### Health Checks
+```bash
+# Middleware health
+curl http://localhost:4001/health
+# Returns: servers count, total tools, tools per server
+
+# Proxy health
+docker logs mcp-proxy --tail 20
+
+# Individual server health
+curl -X POST http://localhost:9090/postgres/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":"1","method":"tools/list","params":{}}'
+```
+
+### Logs
+```bash
+# Middleware logs (shows tool execution)
+docker logs mcp-middleware -f
+
+# Open WebUI logs (shows requests)
+docker logs open-webui -f
+
+# LiteLLM logs
+docker logs litellm -f
+```
+
+---
+
+## Best Practices
+
+### For AI Assistants
+1. Always use MCP tools over shell commands when available
+2. Use natural language requests ("list tools", "read file X")
+3. Let middleware handle tool routing automatically
 
 ### Tool Selection Priority
-1. **Database Operations** → Use `postgres` or `timescaledb` (never `psql` shell commands)
-2. **File Operations** → Use `filesystem` (never `cat`, `ls`, shell commands)
-3. **Web Tasks** → Use `playwright` (never `curl` for complex interactions)
-4. **Storage Operations** → Use `minio` (never `aws s3` CLI)
-5. **Automation** → Use `n8n` (never direct API calls where workflows exist)
+1. **Database** → postgres or timescaledb
+2. **Files** → filesystem
+3. **Web** → puppeteer
+4. **Storage** → minio
+5. **Automation** → n8n
+6. **Memory** → memory
 
-### Proper Usage Syntax
-```bash
-# ✅ Correct MCP usage
-Use postgres to analyze database health
-filesystem.read_file("/workspace/config.json")
-playwright.take_screenshot("dashboard.png")
-
-# ❌ Avoid shell commands when MCP available
-psql -c "SELECT * FROM users"  # Use postgres.execute_sql() instead
-cat /path/file.txt             # Use filesystem.read_file() instead
-```
-
-### Service Differentiation
-- **postgres vs timescaledb**: Use postgres for general SQL, timescaledb for time-series data
-- **Local vs Container paths**: filesystem handles path translation automatically
-- **Security boundaries**: All services respect read-only workspaces and network isolation
+### Security Notes
+- All MCP servers run in isolated Docker networks
+- Filesystem: read-only workspace, write-only /tmp
+- Database: restricted mode (read-only)
+- No direct internet access from MCP containers
 
 ---
 
-## 📚 Additional Resources
+## Troubleshooting
 
-- **Complete Deployment Guide**: `projects/mcp/directmcp.md`
-- **Implementation History**: `projects/mcp/PLAN.status.md`
-- **Service-Specific Details**: Each `{service}/AI.md` file
-- **Tool Reference**: `projects/AINotes/MCPtools.md`
+### "No models in dropdown"
+- Verify Open WebUI is on `litellm-mcp-net` network
+- Check middleware health endpoint responds
 
-**Total Implementation Time**: ~11.5 hours
-**Project Status**: ✅ Complete (5/5 services deployed and tested)
-**Last Updated**: 2025-01-27
+### "Tools not executing"
+- Verify using `-mcp` model variant
+- Check middleware logs for tool execution
+- Ensure MCP proxy is running
+
+### "Can't distinguish models"
+- Both models show as same name in UI
+- Look for `-mcp` suffix in model ID
+- Use second connection for MCP tools
+
+---
+
+## Documentation
+- **Deployment Guide**: `projects/mcp/directmcp.md`
+- **Proxy Config**: `projects/mcp/proxy/config.json`
+- **Middleware**: `projects/mcp/middleware/main.py`
+- **Individual Services**: `projects/mcp/[service]/AI.md`
+
+**Project Status**: ✅ Production (7 servers, 48 tools, automatic execution)
+**Last Updated**: 2025-09-30

@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  mcp-middleware:
+    build: .
+    container_name: mcp-middleware
+    restart: unless-stopped
+    ports:
+      - "4001:8080"
+    networks:
+      - mcp-net
+      - litellm-mcp-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  mcp-net:
+    external: true
+  litellm-mcp-net:
+    external: true
