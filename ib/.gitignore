@@ -1,0 +1,23 @@
+# Environment and secrets
+.env
+
+# IB Gateway data
+jts/
+ibc/
+
+# Config data
+config/*
+!config/.gitkeep
+
+# Logs
+*.log
+
+# Docker
+*.pid
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python

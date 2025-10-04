@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "mcp-ib": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "mcp-ib",
+        "python",
+        "-m",
+        "ib_mcp.server",
+        "--host",
+        "mcp-ib-gateway",
+        "--port",
+        "4002",
+        "--client-id",
+        "1"
+      ]
+    }
+  }
+}
