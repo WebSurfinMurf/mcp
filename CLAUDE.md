@@ -5,9 +5,10 @@ Complete Model Context Protocol (MCP) integration providing 48+ tools across 7 s
 
 **Quick Stats:**
 - **MCP Servers**: 7 (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb)
-- **Total Tools**: 48+ specialized capabilities
+- **Total Tools**: 47 specialized capabilities
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
+- **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
 
 ---
 
@@ -71,6 +72,8 @@ Individual MCP Servers (7 services)
 - S3-compatible object storage
 - Tools: buckets, objects, upload, download, metadata
 - Connection: minio:9000
+- Container: mcp-minio (port 9076)
+- Networks: minio-net, mcp-net
 
 ### 🔄 N8N (6 tools)
 - Workflow automation (400+ integrations)
@@ -79,8 +82,10 @@ Individual MCP Servers (7 services)
 
 ### ⏰ TimescaleDB (6 tools)
 - Time-series database operations
-- Tools: execute_sql, schemas, objects, explain
+- Tools: execute_query, list_databases, list_tables, describe_table, get_table_stats, list_hypertables
 - Connection: timescaledb:5432
+- Container: mcp-timescaledb (port 48011)
+- Networks: mcp-net (added 2025-10-10 for proxy access)
 
 ---
 
@@ -89,7 +94,7 @@ Individual MCP Servers (7 services)
 ### Dual Model Configuration
 Open WebUI offers two model choices:
 1. **claude-sonnet-4-5**: Direct LiteLLM (no MCP tools)
-2. **claude-sonnet-4-5-mcp**: Via middleware (48 MCP tools)
+2. **claude-sonnet-4-5-mcp**: Via middleware (47 MCP tools)
 
 ### Configuration
 **Admin Settings → Connections:**
@@ -103,14 +108,14 @@ Open WebUI offers two model choices:
 ### Special Commands
 - **"list tools"**: Triggers `mcp_list_all_tools` function
 - Returns formatted markdown table organized by server
-- Shows all 48 tools with descriptions
+- Shows all 47 tools with descriptions
 
 ---
 
 ## Middleware Details
 
 ### Tool Execution Loop
-1. Inject 48 MCP tools into request
+1. Inject 47 MCP tools into request
 2. Call LiteLLM with tools enabled
 3. If response contains tool_calls:
    - Execute each tool via MCP proxy
@@ -173,10 +178,48 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 
 ### Example Queries
 ```
-"list tools" → Shows all 48 MCP tools organized by server
+"list tools" → Shows all 47 MCP tools organized by server
 "list postgres databases" → Calls mcp_postgres_execute_sql
 "read the config file" → Calls mcp_filesystem_read_file
 "take screenshot of example.com" → Calls mcp_puppeteer_navigate + screenshot
+"upload file to minio" → Calls mcp_minio_upload_object
+"query timescaledb" → Calls mcp_timescaledb_execute_query
+```
+
+### From Kilo Code (VS Code Extension)
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/filesystem/mcp"
+    },
+    "postgres": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/postgres/mcp"
+    },
+    "puppeteer": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/puppeteer/mcp"
+    },
+    "memory": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/memory/mcp"
+    },
+    "minio": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/minio/mcp"
+    },
+    "n8n": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/n8n/mcp"
+    },
+    "timescaledb": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/timescaledb/mcp"
+    }
+  }
+}
 ```
 
 ### From Claude Code CLI
@@ -267,5 +310,27 @@ docker logs litellm -f
 - **Middleware**: `projects/mcp/middleware/main.py`
 - **Individual Services**: `projects/mcp/[service]/AI.md`
 
-**Project Status**: ✅ Production (7 servers, 48 tools, automatic execution)
-**Last Updated**: 2025-09-30
+## Kilo Code Integration
+
+**Validated**: 2025-10-10
+**Status**: ✅ All 7 servers tested and working via TBXark proxy
+
+### Configuration Location
+- **Global**: `~/.config/Code/User/globalStorage/kilocode.kilo-code/mcp_settings.json`
+- **Project**: `.kilocode/mcp.json` (in project root)
+
+### Key Features
+- **Streamable HTTP Transport**: All servers accessible via single proxy endpoint
+- **Auto-discovery**: Tools automatically loaded from each server
+- **47 Total Tools**: Full access to all MCP capabilities
+- **Network Access**: Works from external machines via `linuxserver.lan:9090`
+
+### Troubleshooting
+- If server doesn't appear in UI, check Kilo Code output panel for connection errors
+- Verify proxy is running: `docker ps --filter name=mcp-proxy`
+- Test endpoint: `curl http://linuxserver.lan:9090/[server]/mcp`
+
+---
+
+**Project Status**: ✅ Production (7 servers, 47 tools, automatic execution)
+**Last Updated**: 2025-10-10 (MinIO deployed, TimescaleDB network fixed, Kilo Code validated)
