@@ -49,6 +49,10 @@
     "timescaledb": {
       "command": "/wrappers/timescaledb-wrapper.sh",
       "args": []
+    },
+    "ib": {
+      "command": "/wrappers/ib-wrapper.sh",
+      "args": []
     }
   }
 }

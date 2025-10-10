@@ -13,9 +13,9 @@ services:
       IB_HOST: ${IB_HOST:-mcp-ib-gateway}
       IB_PORT: ${IB_PORT:-4002}
       IB_CLIENT_ID: ${IB_CLIENT_ID:-1}
-      IB_READONLY: ${IB_READONLY:-true}
+      MCP_SERVER_NAME: ib
     ports:
-      - "3000:3000"  # MCP server port
+      - "48012:8000"
     depends_on:
       - mcp-ib-gateway
     networks:
@@ -23,6 +23,11 @@ services:
       - mcp-net
     volumes:
       - ./config:/app/config
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   mcp-ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:latest
@@ -45,7 +50,9 @@ services:
       - ./jts:/root/Jts
       - ./ibc:/root/ibc
     networks:
-      - mcp-ib-net
+      mcp-ib-net:
+        aliases:
+          - ibgateway
 
 networks:
   mcp-ib-net:

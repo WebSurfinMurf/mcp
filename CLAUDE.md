@@ -1,11 +1,11 @@
 # MCP Infrastructure - Executive Summary
 
 ## Overview
-Complete Model Context Protocol (MCP) integration providing 48+ tools across 7 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
+Complete Model Context Protocol (MCP) integration providing 57+ tools across 8 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
 **Quick Stats:**
-- **MCP Servers**: 7 (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb)
-- **Total Tools**: 47 specialized capabilities
+- **MCP Servers**: 8 (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb, ib)
+- **Total Tools**: 57 specialized capabilities
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 - **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
@@ -87,6 +87,14 @@ Individual MCP Servers (7 services)
 - Container: mcp-timescaledb (port 48011)
 - Networks: mcp-net (added 2025-10-10 for proxy access)
 
+### 📈 Interactive Brokers (10 tools)
+- Market data and portfolio operations for paper trading
+- Tools: lookup_contract, ticker_to_conid, get_historical_data, search_contracts, get_historical_news, get_article, get_fundamental_data, get_account_summary, get_positions, get_contract_details
+- Connection: IB Gateway (paper trading account)
+- Container: mcp-ib (port 48012), mcp-ib-gateway (ports 14002 API, 15900 VNC)
+- Networks: mcp-ib-net (internal), mcp-net (proxy access)
+- Architecture: FastAPI HTTP wrapper around ib-mcp stdio server
+
 ---
 
 ## Open WebUI Integration
@@ -94,7 +102,7 @@ Individual MCP Servers (7 services)
 ### Dual Model Configuration
 Open WebUI offers two model choices:
 1. **claude-sonnet-4-5**: Direct LiteLLM (no MCP tools)
-2. **claude-sonnet-4-5-mcp**: Via middleware (47 MCP tools)
+2. **claude-sonnet-4-5-mcp**: Via middleware (57 MCP tools)
 
 ### Configuration
 **Admin Settings → Connections:**
@@ -108,14 +116,14 @@ Open WebUI offers two model choices:
 ### Special Commands
 - **"list tools"**: Triggers `mcp_list_all_tools` function
 - Returns formatted markdown table organized by server
-- Shows all 47 tools with descriptions
+- Shows all 57 tools with descriptions
 
 ---
 
 ## Middleware Details
 
 ### Tool Execution Loop
-1. Inject 47 MCP tools into request
+1. Inject 57 MCP tools into request
 2. Call LiteLLM with tools enabled
 3. If response contains tool_calls:
    - Execute each tool via MCP proxy
@@ -178,12 +186,14 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 
 ### Example Queries
 ```
-"list tools" → Shows all 47 MCP tools organized by server
+"list tools" → Shows all 57 MCP tools organized by server
 "list postgres databases" → Calls mcp_postgres_execute_sql
 "read the config file" → Calls mcp_filesystem_read_file
 "take screenshot of example.com" → Calls mcp_puppeteer_navigate + screenshot
 "upload file to minio" → Calls mcp_minio_upload_object
 "query timescaledb" → Calls mcp_timescaledb_execute_query
+"get AAPL historical data" → Calls mcp_ib_get_historical_data
+"show my portfolio positions" → Calls mcp_ib_get_positions
 ```
 
 ### From Kilo Code (VS Code Extension)
@@ -217,6 +227,10 @@ docker exec open-webui curl http://mcp-middleware:8080/health
     "timescaledb": {
       "type": "streamable-http",
       "url": "http://linuxserver.lan:9090/timescaledb/mcp"
+    },
+    "ib": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/ib/mcp"
     }
   }
 }
@@ -243,10 +257,18 @@ curl http://localhost:4001/health
 # Proxy health
 docker logs mcp-proxy --tail 20
 
-# Individual server health
+# Individual server health (example: postgres)
 curl -X POST http://localhost:9090/postgres/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":"1","method":"tools/list","params":{}}'
+
+# IB server health (direct endpoint)
+curl http://localhost:48012/health
+
+# IB server via proxy
+curl -X POST http://localhost:9090/ib/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
 ### Logs
@@ -277,6 +299,7 @@ docker logs litellm -f
 4. **Storage** → minio
 5. **Automation** → n8n
 6. **Memory** → memory
+7. **Market Data** → ib (Interactive Brokers)
 
 ### Security Notes
 - All MCP servers run in isolated Docker networks
@@ -313,7 +336,7 @@ docker logs litellm -f
 ## Kilo Code Integration
 
 **Validated**: 2025-10-10
-**Status**: ✅ All 7 servers tested and working via TBXark proxy
+**Status**: ✅ All 8 servers tested and working via TBXark proxy
 
 ### Configuration Location
 - **Global**: `~/.config/Code/User/globalStorage/kilocode.kilo-code/mcp_settings.json`
@@ -322,7 +345,7 @@ docker logs litellm -f
 ### Key Features
 - **Streamable HTTP Transport**: All servers accessible via single proxy endpoint
 - **Auto-discovery**: Tools automatically loaded from each server
-- **47 Total Tools**: Full access to all MCP capabilities
+- **57 Total Tools**: Full access to all MCP capabilities
 - **Network Access**: Works from external machines via `linuxserver.lan:9090`
 
 ### Troubleshooting
@@ -332,5 +355,5 @@ docker logs litellm -f
 
 ---
 
-**Project Status**: ✅ Production (7 servers, 47 tools, automatic execution)
-**Last Updated**: 2025-10-10 (MinIO deployed, TimescaleDB network fixed, Kilo Code validated)
+**Project Status**: ✅ Production (8 servers, 57 tools, automatic execution)
+**Last Updated**: 2025-10-10 (Interactive Brokers deployed, MinIO deployed, TimescaleDB network fixed, Kilo Code validated)
