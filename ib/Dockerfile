@@ -12,19 +12,17 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir \
     ib-mcp \
     ib-insync \
-    fastmcp
+    fastmcp \
+    fastapi \
+    uvicorn[standard] \
+    pydantic
+
+# Copy server code
+COPY src /app/src
 
 # Copy configuration
 COPY config /app/config
 
-# Create startup script
-RUN echo '#!/bin/bash\n\
-exec python -m ib_mcp.server \
-    --host ${IB_HOST:-mcp-ib-gateway} \
-    --port ${IB_PORT:-4002} \
-    --client-id ${IB_CLIENT_ID:-1}' > /app/start.sh && \
-    chmod +x /app/start.sh
+EXPOSE 8000
 
-EXPOSE 3000
-
-CMD ["/app/start.sh"]
+CMD ["python3", "/app/src/server.py"]
