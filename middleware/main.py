@@ -28,7 +28,8 @@ MCP_SERVERS = {
     "memory": "/memory/mcp",
     "minio": "/minio/mcp",
     "n8n": "/n8n/mcp",
-    "timescaledb": "/timescaledb/mcp"
+    "timescaledb": "/timescaledb/mcp",
+    "ib": "/ib/mcp"
 }
 
 # Cache for MCP tools organized by server
