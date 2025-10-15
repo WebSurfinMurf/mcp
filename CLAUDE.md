@@ -4,8 +4,8 @@
 Complete Model Context Protocol (MCP) integration providing 57+ tools across 8 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
 **Quick Stats:**
-- **MCP Servers**: 8 (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb, ib)
-- **Total Tools**: 57 specialized capabilities
+- **MCP Servers**: 9 active (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb, ib, arangodb)
+- **Total Tools**: 64 tools available
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 - **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
@@ -95,6 +95,17 @@ Individual MCP Servers (7 services)
 - Networks: mcp-ib-net (internal), mcp-net (proxy access)
 - Architecture: FastAPI HTTP wrapper around ib-mcp stdio server
 
+### 🗄️ ArangoDB (7 tools) - ✅ DEPLOYED
+- Multi-model database (document, graph, key-value) for AI memory storage
+- Tools: arango_query, arango_insert, arango_update, arango_remove, arango_list_collections, arango_create_collection, arango_backup
+- Connection: arangodb:8529
+- Target Database: ai_memory (AI context/memory storage)
+- Package: arango-server v0.4.0 by ravenwits (TypeScript)
+- Integration: Via MCP Proxy (stdio transport, no separate container)
+- Networks: MCP proxy on arangodb-net for database access
+- Status: Fully operational (deployed 2025-10-14)
+- Documentation: `/home/administrator/projects/mcp/arangodb/AI.md`
+
 ---
 
 ## Open WebUI Integration
@@ -102,7 +113,7 @@ Individual MCP Servers (7 services)
 ### Dual Model Configuration
 Open WebUI offers two model choices:
 1. **claude-sonnet-4-5**: Direct LiteLLM (no MCP tools)
-2. **claude-sonnet-4-5-mcp**: Via middleware (57 MCP tools)
+2. **claude-sonnet-4-5-mcp**: Via middleware (64 MCP tools)
 
 ### Configuration
 **Admin Settings → Connections:**
@@ -116,14 +127,14 @@ Open WebUI offers two model choices:
 ### Special Commands
 - **"list tools"**: Triggers `mcp_list_all_tools` function
 - Returns formatted markdown table organized by server
-- Shows all 57 tools with descriptions
+- Shows all 64 tools with descriptions
 
 ---
 
 ## Middleware Details
 
 ### Tool Execution Loop
-1. Inject 57 MCP tools into request
+1. Inject 64 MCP tools into request
 2. Call LiteLLM with tools enabled
 3. If response contains tool_calls:
    - Execute each tool via MCP proxy
@@ -186,7 +197,7 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 
 ### Example Queries
 ```
-"list tools" → Shows all 57 MCP tools organized by server
+"list tools" → Shows all 64 MCP tools organized by server
 "list postgres databases" → Calls mcp_postgres_execute_sql
 "read the config file" → Calls mcp_filesystem_read_file
 "take screenshot of example.com" → Calls mcp_puppeteer_navigate + screenshot
@@ -194,6 +205,9 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 "query timescaledb" → Calls mcp_timescaledb_execute_query
 "get AAPL historical data" → Calls mcp_ib_get_historical_data
 "show my portfolio positions" → Calls mcp_ib_get_positions
+"list collections in ArangoDB" → Calls mcp_arangodb_list_collections
+"query the ai_memory database" → Calls mcp_arangodb_query
+"insert document into ArangoDB" → Calls mcp_arangodb_insert
 ```
 
 ### From Kilo Code (VS Code Extension)
@@ -231,6 +245,10 @@ docker exec open-webui curl http://mcp-middleware:8080/health
     "ib": {
       "type": "streamable-http",
       "url": "http://linuxserver.lan:9090/ib/mcp"
+    },
+    "arangodb": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/arangodb/mcp"
     }
   }
 }
@@ -238,10 +256,12 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 
 ### From Claude Code CLI
 ```bash
-# Register MCP servers (SSE transport)
+# Register MCP servers (SSE transport or HTTP via proxy)
 claude mcp add postgres-direct http://127.0.0.1:48010/sse --transport sse
 claude mcp add filesystem http://127.0.0.1:9073/sse --transport sse
-# ... etc for all servers
+# ... etc for all SSE servers
+
+# Note: ArangoDB integrated via proxy, accessible via HTTP transport
 ```
 
 ---
@@ -294,12 +314,13 @@ docker logs litellm -f
 
 ### Tool Selection Priority
 1. **Database** → postgres or timescaledb
-2. **Files** → filesystem
-3. **Web** → puppeteer
-4. **Storage** → minio
-5. **Automation** → n8n
-6. **Memory** → memory
-7. **Market Data** → ib (Interactive Brokers)
+2. **AI Memory/Context** → arangodb (multi-model database)
+3. **Files** → filesystem
+4. **Web** → puppeteer
+5. **Storage** → minio
+6. **Automation** → n8n
+7. **Memory** → memory (legacy KG store)
+8. **Market Data** → ib (Interactive Brokers)
 
 ### Security Notes
 - All MCP servers run in isolated Docker networks
@@ -332,11 +353,12 @@ docker logs litellm -f
 - **Proxy Config**: `projects/mcp/proxy/config.json`
 - **Middleware**: `projects/mcp/middleware/main.py`
 - **Individual Services**: `projects/mcp/[service]/AI.md`
+- **Planned Services**: `projects/mcp/arangodb/AI.md` (Phase 2 planning)
 
 ## Kilo Code Integration
 
-**Validated**: 2025-10-10
-**Status**: ✅ All 8 servers tested and working via TBXark proxy
+**Validated**: 2025-10-14
+**Status**: ✅ All 9 servers tested and working via TBXark proxy
 
 ### Configuration Location
 - **Global**: `~/.config/Code/User/globalStorage/kilocode.kilo-code/mcp_settings.json`
@@ -345,7 +367,7 @@ docker logs litellm -f
 ### Key Features
 - **Streamable HTTP Transport**: All servers accessible via single proxy endpoint
 - **Auto-discovery**: Tools automatically loaded from each server
-- **57 Total Tools**: Full access to all MCP capabilities
+- **64 Total Tools**: Full access to all MCP capabilities
 - **Network Access**: Works from external machines via `linuxserver.lan:9090`
 
 ### Troubleshooting
@@ -355,5 +377,35 @@ docker logs litellm -f
 
 ---
 
-**Project Status**: ✅ Production (8 servers, 57 tools, automatic execution)
-**Last Updated**: 2025-10-10 (Interactive Brokers deployed, MinIO deployed, TimescaleDB network fixed, Kilo Code validated)
+## Recent Deployments
+
+### ArangoDB MCP Server (Phase 2) - ✅ COMPLETE
+**Deployment Date**: 2025-10-14
+**Status**: ✅ Fully Operational
+
+**Implementation:**
+- Using standard `arango-server` v0.4.0 by ravenwits (TypeScript package)
+- Integrated via MCP Proxy (stdio transport, no separate container needed)
+- 7 tools available: query, insert, update, remove, list_collections, create_collection, backup
+- Connected to ArangoDB 3.11.14 backend (ai_memory database)
+- MCP proxy added to arangodb-net for database access
+
+**Tools Added:**
+1. `arango_query` - Execute AQL queries
+2. `arango_insert` - Insert documents
+3. `arango_update` - Update documents
+4. `arango_remove` - Remove documents
+5. `arango_list_collections` - List collections
+6. `arango_create_collection` - Create collections
+7. `arango_backup` - Backup to JSON files
+
+**Benefits Achieved:**
+- AI memory/context storage capabilities
+- Document database operations for conversation history
+- Collection management for organized data storage
+- Backup functionality for data persistence
+
+---
+
+**Project Status**: ✅ Production (9 servers, 64 tools, automatic execution)
+**Last Updated**: 2025-10-14 (ArangoDB MCP integration complete)

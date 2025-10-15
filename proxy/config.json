@@ -53,6 +53,17 @@
     "ib": {
       "command": "/wrappers/ib-wrapper.sh",
       "args": []
+    },
+    "arangodb": {
+      "command": "npx",
+      "args": ["-y", "arango-server"],
+      "env": {
+        "NODE_NO_WARNINGS": "1",
+        "ARANGO_URL": "http://arangodb:8529",
+        "ARANGO_DB": "ai_memory",
+        "ARANGO_USERNAME": "root",
+        "ARANGO_PASSWORD": "4SlfiYq6XOUZWP7jKakBksrudBhSWIqV"
+      }
     }
   }
 }

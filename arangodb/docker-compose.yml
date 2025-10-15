@@ -1,0 +1,38 @@
+version: '3.8'
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mcp-arangodb:
+    container_name: mcp-arangodb
+    build: .
+    restart: unless-stopped
+    env_file:
+      - /home/administrator/secrets/mcp-arangodb.env
+    networks:
+      - arangodb-net
+      - mcp-net
+    ports:
+      - "127.0.0.1:48013:8000"
+    healthcheck:
+      test: ["CMD", "/health.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *default-logging
+
+networks:
+  arangodb-net:
+    external: true
+  mcp-net:
+    external: true

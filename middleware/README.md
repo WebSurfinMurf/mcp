@@ -9,6 +9,10 @@ Open WebUI → Middleware (port 4001) → LiteLLM (port 4000) → Anthropic/Open
                 ↓
         Fetches tools from
         MCP Proxy (port 9090)
+                ↓
+        9 Active MCP Servers (64 tools):
+        - filesystem, postgres, puppeteer, memory
+        - minio, n8n, timescaledb, ib, arangodb
 ```
 
 ## How It Works
@@ -76,3 +80,23 @@ Then restart Open WebUI.
 ```bash
 docker logs mcp-middleware --follow
 ```
+
+## Recent Additions
+
+### ArangoDB MCP Server (Deployed 2025-10-14)
+The ArangoDB MCP server has been successfully integrated with the middleware:
+
+**New Tools Added** (7):
+- `mcp_arangodb_query` - Execute AQL queries
+- `mcp_arangodb_insert` - Insert documents into collections
+- `mcp_arangodb_update` - Update existing documents
+- `mcp_arangodb_remove` - Remove documents
+- `mcp_arangodb_list_collections` - List all collections
+- `mcp_arangodb_create_collection` - Create new collections
+- `mcp_arangodb_backup` - Backup collections to JSON files
+
+**Auto-Discovery Confirmed**: Middleware automatically discovered and injected ArangoDB tools via MCP proxy's `/tools/list` endpoint. No configuration changes were needed.
+
+**Status**: ✅ Fully operational (integrated 2025-10-14)
+**Documentation**: `/home/administrator/projects/mcp/arangodb/AI.md`
+**Total Tools Now**: 64 across 9 servers
