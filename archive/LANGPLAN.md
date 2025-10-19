@@ -119,7 +119,7 @@ elif method == "notifications/initialized":
 - **Performance**: ✅ Fast response times for all working tools
 
 #### External Access Status
-**Keycloak Client**: ✅ Configured with secret stored in `/home/administrator/secrets/mcp-server.env`
+**Keycloak Client**: ✅ Configured with secret stored in `$HOME/projects/secrets/mcp-server.env`
 **OAuth2 Proxy**: ✅ Container operational, blocked by network isolation
 **Resolution**: Container network configuration needed for external HTTPS access
 3. **Configure client settings**:
@@ -127,7 +127,7 @@ elif method == "notifications/initialized":
    - Client Authentication: On
    - Valid Redirect URIs: `https://mcp.ai-servicers.com/oauth2/callback`
    - Web Origins: `https://mcp.ai-servicers.com`
-4. **Get client secret** and update `/home/administrator/secrets/mcp-server.env`:
+4. **Get client secret** and update `$HOME/projects/secrets/mcp-server.env`:
    ```bash
    OAUTH2_PROXY_CLIENT_SECRET=<actual-keycloak-client-secret>
    ```
@@ -181,7 +181,7 @@ elif method == "notifications/initialized":
 - **Centralized server**: `/home/administrator/projects/mcp/server/app/main.py`
 - **Docker Compose**: `/home/administrator/projects/mcp/server/docker-compose.yml`
 - **Deployment script**: `/home/administrator/projects/mcp/server/deploy.sh`
-- **Environment config**: `/home/administrator/secrets/mcp-server.env`
+- **Environment config**: `$HOME/projects/secrets/mcp-server.env`
 
 #### MCP Service Directories (Validated & Optimized)
 - **Modern PostgreSQL**: `/home/administrator/projects/mcp/postgres/` (Python - Professional Grade)
@@ -396,7 +396,7 @@ Follow the standard directory pattern:
 # Standard project structure
 mkdir -p /home/administrator/projects/mcp/server/app
 mkdir -p /home/administrator/projects/data/mcp-server
-touch /home/administrator/projects/secrets/mcp-server.env
+touch $HOME/projects/secrets/mcp-server.env
 touch /home/administrator/projects/mcp/server/CLAUDE.md
 
 # Navigate to project directory
@@ -405,7 +405,7 @@ cd /home/administrator/projects/mcp/server
 
 #### 1.2 Environment Configuration
 Create the main environment file following standard location:
-`/home/administrator/projects/secrets/mcp-server.env`:
+`$HOME/projects/secrets/mcp-server.env`:
 ```env
 # Domain Configuration
 DOMAIN=ai-servicers.com
@@ -739,7 +739,7 @@ echo -e "${GREEN}=== MCP Server Deployment ===${NC}"
 PROJECT_NAME="mcp-server"
 PROJECT_DIR="/home/administrator/projects/mcp/server"
 DATA_DIR="/home/administrator/projects/data/$PROJECT_NAME"
-SECRETS_FILE="/home/administrator/projects/secrets/$PROJECT_NAME.env"
+SECRETS_FILE="$HOME/projects/secrets/$PROJECT_NAME.env"
 
 # Validate prerequisites
 if [ ! -f "$SECRETS_FILE" ]; then
@@ -806,13 +806,13 @@ services:
       sh -c "pip install --no-cache-dir -r requirements.txt &&
              uvicorn main:app --host 0.0.0.0 --port 8000"
     env_file:
-      - /home/administrator/secrets/mcp-server.env
-      - /home/administrator/secrets/postgres.env
-      - /home/administrator/secrets/minio.env
+      - $HOME/projects/secrets/mcp-server.env
+      - $HOME/projects/secrets/postgres.env
+      - $HOME/projects/secrets/minio.env
     networks:
       - litellm-net
       - postgres-net
-      - traefik-proxy
+      - traefik-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -827,7 +827,7 @@ services:
     depends_on:
       - mcp-server
     networks:
-      - traefik-proxy
+      - traefik-net
       - keycloak-net
     environment:
       # OAuth2 Proxy Configuration
@@ -857,7 +857,7 @@ services:
     labels:
       # Traefik Configuration
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik-proxy"
+      - "traefik.docker.network=traefik-net"
       - "traefik.http.routers.mcp-server.entrypoints=websecure"
       - "traefik.http.routers.mcp-server.rule=Host(`mcp.ai-servicers.com`)"
       - "traefik.http.routers.mcp-server.tls=true"
@@ -869,7 +869,7 @@ networks:
     external: true
   postgres-net:
     external: true
-  traefik-proxy:
+  traefik-net:
     external: true
   keycloak-net:
     external: true
@@ -890,16 +890,16 @@ networks:
 
 #### 4.2 Complete Secret Management
 All secrets consolidated into the single official secrets file:
-`/home/administrator/projects/secrets/mcp-server.env`
+`$HOME/projects/secrets/mcp-server.env`
 
 ```bash
 # Generate and add OAuth2 secrets to the main secrets file
-echo "OAUTH2_PROXY_CLIENT_ID=mcp-server" >> /home/administrator/projects/secrets/mcp-server.env
-echo "OAUTH2_PROXY_CLIENT_SECRET=your-keycloak-client-secret-here" >> /home/administrator/projects/secrets/mcp-server.env
-echo "OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 32)" >> /home/administrator/projects/secrets/mcp-server.env
+echo "OAUTH2_PROXY_CLIENT_ID=mcp-server" >> $HOME/projects/secrets/mcp-server.env
+echo "OAUTH2_PROXY_CLIENT_SECRET=your-keycloak-client-secret-here" >> $HOME/projects/secrets/mcp-server.env
+echo "OAUTH2_PROXY_COOKIE_SECRET=$(openssl rand -base64 32)" >> $HOME/projects/secrets/mcp-server.env
 
 # Set proper permissions
-chmod 600 /home/administrator/projects/secrets/mcp-server.env
+chmod 600 $HOME/projects/secrets/mcp-server.env
 ```
 
 This creates a single, definitive source of truth for all service secrets following security best practices.
@@ -912,7 +912,7 @@ Follow the standard validation checklist:
 ```bash
 # Validate prerequisites
 PROJECT_NAME="mcp-server"
-SECRETS_FILE="/home/administrator/projects/secrets/$PROJECT_NAME.env"
+SECRETS_FILE="$HOME/projects/secrets/$PROJECT_NAME.env"
 DATA_DIR="/home/administrator/projects/data/$PROJECT_NAME"
 
 # Check secrets file exists and is populated
@@ -939,7 +939,7 @@ else
 fi
 
 # Verify networks exist
-docker network ls | grep -E "(litellm-net|postgres-net|traefik-proxy|keycloak-net)"
+docker network ls | grep -E "(litellm-net|postgres-net|traefik-net|keycloak-net)"
 
 # Check service connectivity
 docker run --rm --network postgres-net postgres:15 pg_isready -h postgres -p 5432
@@ -1012,7 +1012,7 @@ Centralized MCP (Model Context Protocol) server that provides unified tool acces
 - **External URL**: https://mcp.ai-servicers.com
 - **Internal URL**: http://mcp-server:8000
 - **Container**: mcp-server, mcp-server-auth-proxy
-- **Networks**: traefik-proxy, postgres-net, litellm-net, keycloak-net
+- **Networks**: traefik-net, postgres-net, litellm-net, keycloak-net
 
 ## Architecture
 - **Technology Stack**: Python + LangChain + LangServe + FastAPI
@@ -1023,7 +1023,7 @@ Centralized MCP (Model Context Protocol) server that provides unified tool acces
 ## File Locations
 - **Project**: `/home/administrator/projects/mcp/server/`
 - **Data**: `/home/administrator/projects/data/mcp-server/`
-- **Secrets**: `/home/administrator/projects/secrets/mcp-server.env`
+- **Secrets**: `$HOME/projects/secrets/mcp-server.env`
 - **Application**: `/home/administrator/projects/mcp/server/app/`
 - **Deploy Script**: `/home/administrator/projects/mcp/server/deploy.sh`
 
@@ -1071,8 +1071,8 @@ curl -X POST https://mcp.ai-servicers.com/tools/postgres_query \
 ## Troubleshooting
 
 ### Container Not Starting
-- Check secrets file: `cat /home/administrator/projects/secrets/mcp-server.env`
-- Check networks: `docker network ls | grep -E "(postgres-net|litellm-net|traefik-proxy)"`
+- Check secrets file: `cat $HOME/projects/secrets/mcp-server.env`
+- Check networks: `docker network ls | grep -E "(postgres-net|litellm-net|traefik-net)"`
 - Check logs: `docker-compose logs`
 
 ### Authentication Issues
@@ -1126,7 +1126,7 @@ Update the following files:
 ### Directory Structure ✅
 - [x] Base: `/home/administrator/projects/mcp/server/`
 - [x] Data: `/home/administrator/projects/data/mcp-server/`
-- [x] Secrets: `/home/administrator/projects/secrets/mcp-server.env`
+- [x] Secrets: `$HOME/projects/secrets/mcp-server.env`
 - [x] Docs: `/home/administrator/projects/mcp/server/CLAUDE.md`
 
 ### Naming Conventions ✅

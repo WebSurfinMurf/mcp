@@ -23,7 +23,7 @@
 - **Type**: Node.js with bash wrapper
 - **Wrapper**: `mcp-wrapper.sh` loads environment variables
 - **Status**: ✅ Works standalone (tested with tools/list)
-- **Dependencies**: Requires n8n API key from `/home/administrator/secrets/n8n-mcp.env`
+- **Dependencies**: Requires n8n API key from `$HOME/projects/secrets/n8n-mcp.env`
 
 ### Playwright MCP
 - **Location**: `/home/administrator/projects/mcp/playwright/`

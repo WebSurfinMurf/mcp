@@ -69,7 +69,7 @@ curl -X POST http://localhost:4001/v1/chat/completions \
 Update Open WebUI to point to middleware instead of LiteLLM directly:
 
 ```env
-# /home/administrator/secrets/open-webui.env
+# $HOME/projects/secrets/open-webui.env
 OPENAI_API_BASE_URL=http://mcp-middleware:8080/v1
 ```
 

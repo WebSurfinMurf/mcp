@@ -74,7 +74,7 @@ TimescaleDB container (port 5432)
 
 ## Configuration
 
-Environment variables (via `/home/administrator/secrets/mcp-timescaledb.env`):
+Environment variables (via `$HOME/projects/secrets/mcp-timescaledb.env`):
 - `DATABASE_URI`: PostgreSQL connection string
 - `MCP_ALLOW_WRITE`: Set to false for read-only access
 - `MCP_RATE_LIMIT`: Request rate limiting (default: 100/min)

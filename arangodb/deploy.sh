@@ -10,8 +10,8 @@ echo "Deploying MCP ArangoDB Service"
 echo "======================================"
 
 # Load environment
-if [ -f "/home/administrator/secrets/${PROJECT_NAME}.env" ]; then
-    source /home/administrator/secrets/${PROJECT_NAME}.env
+if [ -f "$HOME/projects/secrets/${PROJECT_NAME}.env" ]; then
+    source $HOME/projects/secrets/${PROJECT_NAME}.env
     echo "✓ Environment loaded from secrets/${PROJECT_NAME}.env"
 else
     echo "✗ ERROR: Environment file not found at secrets/${PROJECT_NAME}.env"

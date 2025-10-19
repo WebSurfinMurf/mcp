@@ -150,13 +150,13 @@ services:
   mcp-n8n:
     image: czlonkowski/n8n-mcp:latest
     container_name: mcp-n8n
-    networks: [traefik-proxy, n8n-net]
+    networks: [traefik-net, n8n-net]
     # Exposes n8n MCP tools via HTTP/stdio
 
   mcp-playwright:
     image: microsoft/playwright-mcp:latest
     container_name: mcp-playwright
-    networks: [traefik-proxy]
+    networks: [traefik-net]
     # Exposes Playwright tools via MCP protocol
 
   # Enhanced TimescaleDB integration (existing, enhanced)
@@ -189,7 +189,7 @@ tools = [
 #### **Configuration Management**
 ```bash
 # Enhanced environment file structure
-/home/administrator/secrets/mcp-server.env:
+$HOME/projects/secrets/mcp-server.env:
 # Existing services...
 # PostgreSQL, MinIO, Monitoring, Web, Filesystem configs...
 
@@ -544,7 +544,7 @@ SECURITY_POLICIES = {
 ```
 
 ### **Configuration Management**
-- **Secrets**: All credentials in `/home/administrator/secrets/mcp-server.env`
+- **Secrets**: All credentials in `$HOME/projects/secrets/mcp-server.env`
 - **Network**: Internal Docker network communication preferred
 - **Authentication**: Maintain OAuth2 proxy for external access
 - **Logging**: Comprehensive structured logging for all new tools
@@ -782,7 +782,7 @@ docker exec mcp-n8n curl -s -X POST http://mcp-server:8000/tools/n8n_get_databas
 ### **🔐 Security Implementation**
 
 #### **✅ Secrets Management**
-- **Location**: `/home/administrator/secrets/mcp-server.env`
+- **Location**: `$HOME/projects/secrets/mcp-server.env`
 - **Coverage**: All container credentials, API tokens, OAuth2 secrets
 - **Pattern**: Environment variable references throughout configs
 - **Validation**: No hardcoded secrets in project directories

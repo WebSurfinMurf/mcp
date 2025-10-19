@@ -177,10 +177,10 @@ GRANT ALL PRIVILEGES ON DATABASE litellm_db TO litellm_user;
 Create a centralized environment file to store secrets. Per the coding standards, this will be outside the project directory.
 
 **Action:**
-Create the file `/home/administrator/secrets/mcp-litellm.env` with the following content.
+Create the file `$HOME/projects/secrets/mcp-litellm.env` with the following content.
 
 ```env
-# /home/administrator/secrets/mcp-litellm.env
+# $HOME/projects/secrets/mcp-litellm.env
 
 # PostgreSQL Database URL for LiteLLM's internal logging
 DATABASE_URL="postgresql://litellm_user:a_very_secure_password_placeholder@postgres:5432/litellm_db"
@@ -193,7 +193,7 @@ LITELLM_MASTER_KEY="sk-litellm-master-key-placeholder"
 ```
 **Actions:**
 1.  Replace password and key placeholders with secure values.
-2.  Set secure permissions for the file: `chmod 600 /home/administrator/secrets/mcp-litellm.env`.
+2.  Set secure permissions for the file: `chmod 600 $HOME/projects/secrets/mcp-litellm.env`.
 
 ---
 
@@ -251,7 +251,7 @@ set -e
 
 PROJECT_NAME="mcp-litellm"
 CONTAINER_NAME="mcp-litellm"
-SECRETS_FILE="/home/administrator/secrets/mcp-litellm.env"
+SECRETS_FILE="$HOME/projects/secrets/mcp-litellm.env"
 CONFIG_PATH="/home/administrator/projects/mcp/litellm/config/config.yaml"
 
 echo "Stopping and removing existing container..."

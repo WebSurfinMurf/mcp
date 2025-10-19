@@ -17,7 +17,7 @@
 - n8n API key: `eyJhbGciOiJIUzI1NiIs...` (JWT token)
 
 **✅ Resolution**:
-- Moved all secrets to `/home/administrator/secrets/mcp-server.env`
+- Moved all secrets to `$HOME/projects/secrets/mcp-server.env`
 - Updated compose file to use `env_file` references
 - Replaced hardcoded values with `${VARIABLE}` references
 
@@ -46,7 +46,7 @@
 ## Current Security Status
 
 ### ✅ **Secrets Properly Secured**
-**Location**: `/home/administrator/secrets/mcp-server.env`
+**Location**: `$HOME/projects/secrets/mcp-server.env`
 **Permissions**: `644` (administrator read/write, group read)
 **Content**: All production secrets consolidated
 
@@ -63,7 +63,7 @@
 
 ### Environment File Organization
 ```
-/home/administrator/secrets/mcp-server.env
+$HOME/projects/secrets/mcp-server.env
 ├── Database credentials (PostgreSQL, TimescaleDB)
 ├── Object storage credentials (MinIO)
 ├── OAuth2 authentication secrets
@@ -89,7 +89,7 @@ find /home/administrator/projects/mcp -name "*.yml" -o -name "*.py" -o -name "*.
 
 ### ✅ **Environment Loading Tested**
 ```bash
-source /home/administrator/secrets/mcp-server.env
+source $HOME/projects/secrets/mcp-server.env
 echo $POSTGRES_PASSWORD  # ✅ Loads correctly
 echo $N8N_API_KEY        # ✅ Loads correctly
 echo $OAUTH2_PROXY_CLIENT_SECRET  # ✅ Loads correctly
@@ -104,7 +104,7 @@ docker-compose -f docker-compose.microservices.yml config
 ## Security Best Practices Applied
 
 ### 1. **Centralized Secrets Management**
-- Single source of truth: `/home/administrator/secrets/mcp-server.env`
+- Single source of truth: `$HOME/projects/secrets/mcp-server.env`
 - All services reference the same environment file
 - Eliminates secret duplication across files
 
@@ -129,7 +129,7 @@ docker-compose -f docker-compose.microservices.yml config
 **Justification**: All secrets properly secured in dedicated location outside project directory
 
 ### **Remaining Considerations**:
-1. **Access Control**: Ensure `/home/administrator/secrets/` has proper file permissions
+1. **Access Control**: Ensure `$HOME/projects/secrets/` has proper file permissions
 2. **Backup Security**: Include secrets directory in secure backup procedures
 3. **Rotation Policy**: Establish regular secret rotation schedule
 4. **Monitoring**: Consider monitoring for secret exposure in future changes

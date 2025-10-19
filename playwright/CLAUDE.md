@@ -26,7 +26,7 @@ claude mcp add playwright http://127.0.0.1:9075/sse --transport sse --scope user
 - **SSE Endpoint**: http://127.0.0.1:9075/sse
 - **Health Check**: http://127.0.0.1:9075/health
 - **Browser**: Chromium (headless)
-- **Environment**: /home/administrator/secrets/mcp-playwright.env
+- **Environment**: $HOME/projects/secrets/mcp-playwright.env
 
 ## Example Usage
 

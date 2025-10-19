@@ -228,13 +228,13 @@ do_run() {
             export DATABASE_URL="${DATABASE_URL:-postgresql://admin:Pass123qp@localhost:5432/postgres}"
             ;;
         github)
-            if [ -f "/home/administrator/secrets/github.env" ]; then
-                source /home/administrator/secrets/github.env
+            if [ -f "$HOME/projects/secrets/github.env" ]; then
+                source $HOME/projects/secrets/github.env
             fi
             ;;
         n8n)
-            if [ -f "/home/administrator/secrets/mcp-n8n.env" ]; then
-                source /home/administrator/secrets/mcp-n8n.env
+            if [ -f "$HOME/projects/secrets/mcp-n8n.env" ]; then
+                source $HOME/projects/secrets/mcp-n8n.env
             fi
             ;;
     esac
@@ -405,19 +405,19 @@ EOF
             env_vars='"DATABASE_URL": "postgresql://admin:Pass123qp@localhost:5432/postgres"'
             ;;
         github)
-            if [ -f "/home/administrator/secrets/github.env" ]; then
+            if [ -f "$HOME/projects/secrets/github.env" ]; then
                 # Extract GitHub token if available
-                local github_token=$(grep "GITHUB_TOKEN=" /home/administrator/secrets/github.env | cut -d'=' -f2 | tr -d '"')
+                local github_token=$(grep "GITHUB_TOKEN=" $HOME/projects/secrets/github.env | cut -d'=' -f2 | tr -d '"')
                 if [ -n "$github_token" ]; then
                     env_vars='"GITHUB_TOKEN": "'$github_token'"'
                 fi
             fi
             ;;
         n8n)
-            if [ -f "/home/administrator/secrets/mcp-n8n.env" ]; then
+            if [ -f "$HOME/projects/secrets/mcp-n8n.env" ]; then
                 # Extract N8N credentials if available
-                local n8n_host=$(grep "N8N_HOST=" /home/administrator/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
-                local n8n_token=$(grep "N8N_API_TOKEN=" /home/administrator/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
+                local n8n_host=$(grep "N8N_HOST=" $HOME/projects/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
+                local n8n_token=$(grep "N8N_API_TOKEN=" $HOME/projects/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
                 if [ -n "$n8n_host" ] && [ -n "$n8n_token" ]; then
                     env_vars='"N8N_HOST": "'$n8n_host'", "N8N_API_TOKEN": "'$n8n_token'"'
                 fi
@@ -532,17 +532,17 @@ EOF
                 env_vars='"DATABASE_URL": "postgresql://admin:Pass123qp@localhost:5432/postgres"'
                 ;;
             github)
-                if [ -f "/home/administrator/secrets/github.env" ]; then
-                    local github_token=$(grep "GITHUB_TOKEN=" /home/administrator/secrets/github.env | cut -d'=' -f2 | tr -d '"')
+                if [ -f "$HOME/projects/secrets/github.env" ]; then
+                    local github_token=$(grep "GITHUB_TOKEN=" $HOME/projects/secrets/github.env | cut -d'=' -f2 | tr -d '"')
                     if [ -n "$github_token" ]; then
                         env_vars='"GITHUB_TOKEN": "'$github_token'"'
                     fi
                 fi
                 ;;
             n8n)
-                if [ -f "/home/administrator/secrets/mcp-n8n.env" ]; then
-                    local n8n_host=$(grep "N8N_HOST=" /home/administrator/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
-                    local n8n_token=$(grep "N8N_API_TOKEN=" /home/administrator/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
+                if [ -f "$HOME/projects/secrets/mcp-n8n.env" ]; then
+                    local n8n_host=$(grep "N8N_HOST=" $HOME/projects/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
+                    local n8n_token=$(grep "N8N_API_TOKEN=" $HOME/projects/secrets/mcp-n8n.env | cut -d'=' -f2 | tr -d '"')
                     if [ -n "$n8n_host" ] && [ -n "$n8n_token" ]; then
                         env_vars='"N8N_HOST": "'$n8n_host'", "N8N_API_TOKEN": "'$n8n_token'"'
                     fi

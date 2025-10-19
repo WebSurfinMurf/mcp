@@ -12,7 +12,7 @@ services:
     build: .
     restart: unless-stopped
     env_file:
-      - /home/administrator/secrets/mcp-arangodb.env
+      - $HOME/projects/secrets/mcp-arangodb.env
     networks:
       - arangodb-net
       - mcp-net

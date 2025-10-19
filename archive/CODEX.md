@@ -21,7 +21,7 @@ Upstream MCP repos under `projects/mcp/*/source` remain untouched; LiteLLM launc
 ---
 
 ## Validation to Date
-- **Traefik routing**: Split the LiteLLM ingress into two routers per host: `/ui`, `/docs`, `/swagger`, `/openapi.json` remain publicly accessible; all other paths require `Authorization: Bearer …` and now route via `HeaderRegexp` (Traefik v3-compatible). Confirmed with a temporary `whoami` test service before applying to production, then validated live using `curlimages/curl` containers on the `traefik-proxy` network.  
+- **Traefik routing**: Split the LiteLLM ingress into two routers per host: `/ui`, `/docs`, `/swagger`, `/openapi.json` remain publicly accessible; all other paths require `Authorization: Bearer …` and now route via `HeaderRegexp` (Traefik v3-compatible). Confirmed with a temporary `whoami` test service before applying to production, then validated live using `curlimages/curl` containers on the `traefik-net` network.  
 - **LAN access (SSE)**: `test-lan-mcp-tools-once.sh` / `mcp-diagnose.sh` continue to show `/mcp/tools` streaming heartbeat `ping` events only (latest capture `projects/litellm/evaluation/diagnostic-2025-09-19-071230-mcp-sse.log`). Tool catalogs still pending upstream MCP fixes.  
 - **LiteLLM logs**: Added a Traefik middleware that injects the admin Bearer key for `/schedule/model_cost_map_reload/status`; the UI poll now succeeds (HTTP 400 when no job is queued) and the recurring `ProxyException` noise has stopped.  
 - **Codex CLI**: configuration updated; awaiting interactive test (next step after context reload).  

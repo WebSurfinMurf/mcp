@@ -98,6 +98,6 @@
 ## Integration Points
 - **n8n Container**: Main workflow automation engine
 - **n8n-net**: Docker network for API communication
-- **Environment File**: `/home/administrator/secrets/mcp-n8n.env`
+- **Environment File**: `$HOME/projects/secrets/mcp-n8n.env`
 - **Bridge Script**: `/home/administrator/projects/mcp/n8n/mcp-bridge.py`
 - **API Endpoint**: `http://n8n:5678/api/v1/`

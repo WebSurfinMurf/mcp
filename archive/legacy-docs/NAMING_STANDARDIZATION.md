@@ -87,7 +87,7 @@ No more randomly named containers like "hardcore_ishizaka" or "fervent_euclid"!
 - `/home/administrator/projects/mcp/proxy-sse/servers-production.json` (updated)
 
 ## Secrets Standardization Also Complete
-- All secrets now in `/home/administrator/secrets/mcp-{service}.env`
+- All secrets now in `$HOME/projects/secrets/mcp-{service}.env`
 - Removed embedded secrets from code where possible
 - Consistent naming pattern throughout
 

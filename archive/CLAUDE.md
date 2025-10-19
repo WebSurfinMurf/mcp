@@ -178,7 +178,7 @@
 ## Configuration
 
 ### Environment Variables
-- Service-specific secrets: `/home/administrator/secrets/mcp-{service}.env`
+- Service-specific secrets: `$HOME/projects/secrets/mcp-{service}.env`
 - Follow security best practices (no hardcoded credentials)
 - Use environment variable references in all configurations
 

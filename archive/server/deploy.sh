@@ -12,7 +12,7 @@ echo -e "${GREEN}=== MCP Server Deployment ===${NC}"
 PROJECT_NAME="mcp-server"
 PROJECT_DIR="/home/administrator/projects/mcp/server"
 DATA_DIR="/home/administrator/projects/data/$PROJECT_NAME"
-SECRETS_FILE="/home/administrator/secrets/$PROJECT_NAME.env"
+SECRETS_FILE="$HOME/projects/secrets/$PROJECT_NAME.env"
 
 # Validate prerequisites
 echo -e "${YELLOW}Validating prerequisites...${NC}"
@@ -25,7 +25,7 @@ fi
 
 # Check required environment files
 for env_file in postgres.env minio.env; do
-    if [ ! -f "/home/administrator/secrets/$env_file" ]; then
+    if [ ! -f "$HOME/projects/secrets/$env_file" ]; then
         echo -e "${YELLOW}Warning: $env_file not found in secrets directory${NC}"
     fi
 done

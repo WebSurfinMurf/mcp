@@ -101,7 +101,7 @@ done
 
 1. **Docker Compose Integration**: Full orchestration with networks, volumes, health checks
 2. **SSE Protocol Support**: Working SSE endpoints for all MCP services
-3. **Multi-Network Architecture**: Integrated with traefik-proxy, postgres-net, loki-net
+3. **Multi-Network Architecture**: Integrated with traefik-net, postgres-net, loki-net
 4. **Database Initialization**: Automated setup for memory MCP
 5. **Environment Management**: Proper secret handling with environment variables
 

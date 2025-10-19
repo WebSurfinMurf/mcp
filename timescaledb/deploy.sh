@@ -10,8 +10,8 @@ echo "Deploying MCP TimescaleDB Service"
 echo "======================================"
 
 # Load environment
-if [ -f "/home/administrator/secrets/${PROJECT_NAME}.env" ]; then
-    source /home/administrator/secrets/${PROJECT_NAME}.env
+if [ -f "$HOME/projects/secrets/${PROJECT_NAME}.env" ]; then
+    source $HOME/projects/secrets/${PROJECT_NAME}.env
     echo "✓ Environment loaded from secrets/${PROJECT_NAME}.env"
 else
     echo "⚠ No environment file found, using defaults"
@@ -92,7 +92,7 @@ cat >> /home/administrator/projects/mcp/CLAUDE.md << EOF
 - **Endpoint**: http://127.0.0.1:48011/sse
 - **Container**: ${PROJECT_NAME}
 - **Network**: postgres-net (connects to TimescaleDB)
-- **Environment**: /home/administrator/secrets/${PROJECT_NAME}.env
+- **Environment**: $HOME/projects/secrets/${PROJECT_NAME}.env
 - **Database**: TimescaleDB (tsdbadmin user, read-only)
 EOF
 

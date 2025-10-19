@@ -9,10 +9,10 @@ set -euo pipefail
 #   ./sync-claude-config.sh [path-to-env]
 #
 # The script loads MCP_PROXY_TOKEN from the secrets file (default:
-# /home/administrator/secrets/mcp-proxy.env) and writes a minimal MCP config
+# $HOME/projects/secrets/mcp-proxy.env) and writes a minimal MCP config
 # containing the postgres and fetch proxy entries.
 
-DEFAULT_ENV="/home/administrator/secrets/mcp-proxy.env"
+DEFAULT_ENV="$HOME/projects/secrets/mcp-proxy.env"
 ENV_FILE="${1:-$DEFAULT_ENV}"
 
 if [[ ! -f "$ENV_FILE" ]]; then

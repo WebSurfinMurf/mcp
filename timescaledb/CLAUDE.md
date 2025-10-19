@@ -25,7 +25,7 @@ This service provides PostgreSQL-compatible database tools including:
 - **SSE Endpoint**: http://127.0.0.1:48011/sse
 - **Network**: postgres-net (connects to TimescaleDB)
 - **Database**: TimescaleDB (tsdbadmin user, read-only)
-- **Environment**: /home/administrator/secrets/mcp-timescaledb.env
+- **Environment**: $HOME/projects/secrets/mcp-timescaledb.env
 
 ## Database Connection
 

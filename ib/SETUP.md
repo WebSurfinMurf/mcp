@@ -6,7 +6,7 @@ Both services are running and configured:
 - ✅ IB Gateway container running
 - ✅ IB MCP server running
 - ✅ VNC enabled and accessible via Guacamole
-- ✅ Secrets moved to `/home/administrator/projects/secrets/mcp-ib.env`
+- ✅ Secrets moved to `$HOME/projects/secrets/mcp-ib.env`
 
 ## Access IB Gateway GUI
 
@@ -20,7 +20,7 @@ Both services are running and configured:
 
 Edit the secrets file:
 ```bash
-nano /home/administrator/projects/secrets/mcp-ib.env
+nano $HOME/projects/secrets/mcp-ib.env
 ```
 
 Update these values:
@@ -48,7 +48,7 @@ Watch the login process in Guacamole - if you have 2FA, you'll need to respond t
 ## Security Notes
 
 ✅ **Credentials stored securely:**
-- All secrets in `/home/administrator/projects/secrets/`
+- All secrets in `$HOME/projects/secrets/`
 - `.gitignore` prevents committing secrets
 - No credentials in project directories
 

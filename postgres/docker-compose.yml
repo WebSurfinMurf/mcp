@@ -12,7 +12,7 @@ services:
     container_name: mcp-postgres
     restart: unless-stopped
     env_file:
-      - /home/administrator/secrets/mcp-postgres.env
+      - $HOME/projects/secrets/mcp-postgres.env
     entrypoint: ["/bin/sh", "-c"]
     command: ["postgres-mcp --access-mode restricted --transport sse --sse-host 0.0.0.0 --sse-port 8686 \"$$DATABASE_URI\""]
     networks:

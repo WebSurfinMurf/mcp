@@ -4,7 +4,7 @@
 
 ## Summary
 Following the Validate-First Philosophy, we've successfully standardized the MCP infrastructure:
-- ✅ All secrets moved to `/home/administrator/secrets/` with consistent naming
+- ✅ All secrets moved to `$HOME/projects/secrets/` with consistent naming
 - ✅ Removed hardcoded secrets where possible
 - ✅ Updated configurations to use standardized paths
 - ✅ All 7 services validated and working
@@ -13,14 +13,14 @@ Following the Validate-First Philosophy, we've successfully standardized the MCP
 
 ### 1. Secret Files Standardization
 Created/updated standardized secret files:
-- `/home/administrator/secrets/mcp-postgres.env` (existing)
-- `/home/administrator/secrets/mcp-timescaledb.env` (new)
-- `/home/administrator/secrets/mcp-n8n.env` (migrated from n8n-mcp.env)
-- `/home/administrator/secrets/mcp-memory-postgres.env` (existing)
+- `$HOME/projects/secrets/mcp-postgres.env` (existing)
+- `$HOME/projects/secrets/mcp-timescaledb.env` (new)
+- `$HOME/projects/secrets/mcp-n8n.env` (migrated from n8n-mcp.env)
+- `$HOME/projects/secrets/mcp-memory-postgres.env` (existing)
 
 ### 2. Configuration Updates
-- **n8n wrapper**: Updated to use `/home/administrator/secrets/mcp-n8n.env`
-- **TimescaleDB wrapper**: Updated to load from `/home/administrator/secrets/mcp-timescaledb.env`
+- **n8n wrapper**: Updated to use `$HOME/projects/secrets/mcp-n8n.env`
+- **TimescaleDB wrapper**: Updated to load from `$HOME/projects/secrets/mcp-timescaledb.env`
 - **Proxy configuration**: Removed hardcoded TimescaleDB credentials (now loaded from secret file)
 - **PostgreSQL**: Kept hardcoded DATABASE_URI due to environment variable expansion limitations
 
@@ -45,7 +45,7 @@ Created/updated standardized secret files:
 ```
 
 ### Secret Files
-Pattern: `/home/administrator/secrets/mcp-{service}.env`
+Pattern: `$HOME/projects/secrets/mcp-{service}.env`
 - mcp-postgres.env
 - mcp-timescaledb.env
 - mcp-n8n.env
@@ -78,7 +78,7 @@ All services tested and confirmed working via SSE proxy (port 8585):
 
 ## Security Improvements
 1. No secrets in git repositories
-2. Centralized secret management in `/home/administrator/secrets/`
+2. Centralized secret management in `$HOME/projects/secrets/`
 3. Wrapper scripts load credentials at runtime
 4. Removed unnecessary environment variable exposure in proxy config
 
