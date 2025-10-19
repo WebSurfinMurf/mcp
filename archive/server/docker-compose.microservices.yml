@@ -15,7 +15,7 @@ services:
       sh -c "pip install --no-cache-dir -r requirements.txt &&
              uvicorn main:app --host 0.0.0.0 --port 8000"
     env_file:
-      - /home/administrator/secrets/mcp-server.env
+      - $HOME/projects/secrets/mcp-server.env
     environment:
       # MCP microservice endpoints
       - MCP_N8N_ENDPOINT=http://mcp-n8n:3000
@@ -53,7 +53,7 @@ services:
       - traefik-proxy
       - keycloak-net
     env_file:
-      - /home/administrator/secrets/mcp-server.env
+      - $HOME/projects/secrets/mcp-server.env
     environment:
       # OAuth2 Proxy Configuration
       - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
@@ -100,7 +100,7 @@ services:
       - mcp-internal
       - traefik-proxy  # Access to n8n instance
     env_file:
-      - /home/administrator/secrets/mcp-server.env
+      - $HOME/projects/secrets/mcp-server.env
     environment:
       # HTTP mode for container-to-container communication
       MCP_MODE: http
@@ -139,7 +139,7 @@ services:
     networks:
       - mcp-internal
     env_file:
-      - /home/administrator/secrets/mcp-playwright.env
+      - $HOME/projects/secrets/mcp-playwright.env
     environment:
       # Override specific values from env file
       PORT: 8080

@@ -26,7 +26,7 @@ Use the management script rather than editing JSON by hand—this keeps backups 
 
 ```bash
 cd /home/administrator/projects/mcp
-source /home/administrator/secrets/mcp-proxy.env
+source $HOME/projects/secrets/mcp-proxy.env
 ./add-to-central.sh --service <name> --port <bridge-port> --add-auth --test --test-token "$MCP_PROXY_TOKEN"
 ```
 
@@ -49,7 +49,7 @@ source /home/administrator/secrets/mcp-proxy.env
 - Append the service to `mcp/proxy/status.md` under “Active Backends”.
 - If this is a new class of tool, update `mcp/proxy/CLAUDE.md` architecture and operations sections.
 - Create or refresh the service-specific `projects/mcp/<service>/CLAUDE.md` detailing configuration, credentials location, and troubleshooting.
-- If secrets were added, document them in `/home/administrator/secrets/<service>.env` and ensure `chmod 600`.
+- If secrets were added, document them in `$HOME/projects/secrets/<service>.env` and ensure `chmod 600`.
 
 ## 7. Troubleshooting Tips
 - **401 Unauthorized:** confirm `--add-auth` was used and the proxy config includes the correct `Authorization` header.

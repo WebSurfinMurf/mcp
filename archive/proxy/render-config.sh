@@ -7,7 +7,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CONFIG_DIR="${ROOT_DIR}/config"
 TEMPLATE="${CONFIG_DIR}/config.template.json"
 OUTPUT="${CONFIG_DIR}/config.json"
-DEFAULT_ENV_FILE="/home/administrator/secrets/mcp-proxy.env"
+DEFAULT_ENV_FILE="$HOME/projects/secrets/mcp-proxy.env"
 ENV_FILE="${ENV_FILE:-${DEFAULT_ENV_FILE}}"
 
 if [[ ! -f "${TEMPLATE}" ]]; then

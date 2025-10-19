@@ -146,7 +146,7 @@ docker compose up -d --build
 
 **Step 3: Register with Central Proxy**
 ```bash
-source /home/administrator/secrets/mcp-proxy.env
+source $HOME/projects/secrets/mcp-proxy.env
 ./add-to-central.sh \
   --service filesystem \
   --port 9071 \
@@ -619,7 +619,7 @@ networks:
 Test SSE endpoints manually with curl:
 ```bash
 # Set token for testing
-source /home/administrator/secrets/mcp-proxy.env
+source $HOME/projects/secrets/mcp-proxy.env
 export MCP_TOKEN=${MCP_PROXY_TOKEN}
 
 # Test proxy root health check

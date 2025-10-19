@@ -91,7 +91,7 @@ version: '3.8'
 networks:
   mcp-internal:
     driver: bridge
-  traefik-proxy:
+  traefik-net:
     external: true
   postgres-net:
     external: true
@@ -102,7 +102,7 @@ x-common-settings: &common
   restart: unless-stopped
   networks:
     - mcp-internal
-    - traefik-proxy
+    - traefik-net
   logging:
     driver: "json-file"
     options:
@@ -148,7 +148,7 @@ services:
     networks:
       - mcp-internal
       - postgres-net
-      - traefik-proxy
+      - traefik-net
     environment:
       - PGHOST=postgres
       - PGPORT=5432
@@ -192,7 +192,7 @@ services:
     networks:
       - mcp-internal
       - loki-net
-      - traefik-proxy
+      - traefik-net
     environment:
       - LOKI_URL=http://loki:3100
       - NETDATA_URL=http://netdata:19999
@@ -227,7 +227,7 @@ services:
     networks:
       - mcp-internal
       - postgres-net
-      - traefik-proxy
+      - traefik-net
     environment:
       - PGHOST=postgres
       - PGPORT=5432
@@ -397,7 +397,7 @@ if ! command -v docker-compose &> /dev/null; then
 fi
 
 # Load environment variables
-source /home/administrator/secrets/mcp.env
+source $HOME/projects/secrets/mcp.env
 
 # Build all images
 echo "Building MCP images..."

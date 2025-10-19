@@ -36,7 +36,7 @@
    - `github_get_repository` - Get repository details
    - `github_create_issue` - Create new issues
    - Command: `npx @modelcontextprotocol/server-github`
-   - Token: Loaded from `/home/administrator/secrets/github.env`
+   - Token: Loaded from `$HOME/projects/secrets/github.env`
 
 4. **monitoring** (5 tools) - Loki/Netdata via Node.js
    - `monitoring_search_logs` - Search logs with LogQL

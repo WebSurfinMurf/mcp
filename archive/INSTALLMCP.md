@@ -525,7 +525,7 @@ def _get_tool_category(tool_name: str) -> str:
 
 ### **Step 3: Environment Configuration**
 
-**File**: `/home/administrator/secrets/mcp-server.env`
+**File**: `$HOME/projects/secrets/mcp-server.env`
 
 ```bash
 # {Service} HTTP Service Configuration
@@ -587,7 +587,7 @@ services:
 cd /home/administrator/projects/mcp/server
 
 # Load environment variables
-set -a && source /home/administrator/secrets/mcp-server.env && set +a
+set -a && source $HOME/projects/secrets/mcp-server.env && set +a
 
 # Build and deploy new service
 docker compose -f docker-compose.microservices.yml up -d mcp-{service}

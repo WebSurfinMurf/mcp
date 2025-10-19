@@ -5,7 +5,7 @@ Central MCP proxy that aggregates multiple MCP services behind a single Server-S
 - **Status**: ✅ Central proxy reachable on the LAN and serving registered MCP services
 - **Proxy Image**: `ghcr.io/tbxark/mcp-proxy:v0.39.1`
 - **Listen Address**: `http://linuxserver.lan:9090`
-- **Authentication**: Bearer token loaded from `/home/administrator/secrets/mcp-proxy.env`
+- **Authentication**: Bearer token loaded from `$HOME/projects/secrets/mcp-proxy.env`
 - **Backends wired**: PostgreSQL (crystaldba/postgres-mcp) and Fetch bridge; filesystem/timescaledb ready but not registered by default
 
 ## 📝 Recent Work & Changes
@@ -33,9 +33,9 @@ Central Proxy (linuxserver.lan:9090)
 - **Config template**: `mcp/proxy/config/config.template.json`
 - **Token injection script**: `mcp/proxy/render-config.sh`
 - **Secrets**:
-  - `/home/administrator/secrets/mcp-proxy.env`
-  - `/home/administrator/secrets/mcp-postgres.env`
-  - `/home/administrator/secrets/mcp-timescaledb.env`
+  - `$HOME/projects/secrets/mcp-proxy.env`
+  - `$HOME/projects/secrets/mcp-postgres.env`
+  - `$HOME/projects/secrets/mcp-timescaledb.env`
 - Generated config (`config/config.json`) is git-ignored; render it before starting the proxy.
 
 ## 🌐 Access & Management
@@ -58,8 +58,8 @@ Central Proxy (linuxserver.lan:9090)
 1. **Manage proxy token**
    ```bash
    # Create/update the env file without committing the value
-   install -m 600 /dev/null /home/administrator/secrets/mcp-proxy.env
-   echo "MCP_PROXY_TOKEN=$(openssl rand -hex 32)" > /home/administrator/secrets/mcp-proxy.env
+   install -m 600 /dev/null $HOME/projects/secrets/mcp-proxy.env
+   echo "MCP_PROXY_TOKEN=$(openssl rand -hex 32)" > $HOME/projects/secrets/mcp-proxy.env
    ```
 2. **Render proxy config (keeps existing services)**
    ```bash
@@ -87,7 +87,7 @@ Central Proxy (linuxserver.lan:9090)
    *(Repeat for other services as needed.)*
 5. **Smoke test**
    ```bash
-   export MCP_PROXY_TOKEN=$(grep MCP_PROXY_TOKEN /home/administrator/secrets/mcp-proxy.env | cut -d= -f2)
+   export MCP_PROXY_TOKEN=$(grep MCP_PROXY_TOKEN $HOME/projects/secrets/mcp-proxy.env | cut -d= -f2)
    curl -f http://linuxserver.lan:9090/
    curl -N -H 'Accept: text/event-stream' -H "Authorization: Bearer $MCP_PROXY_TOKEN" \
      http://linuxserver.lan:9090/postgres/sse | head
@@ -107,7 +107,7 @@ Central Proxy (linuxserver.lan:9090)
 - **Healthcheck failures**: upstream images may lack `wget`; replace with `CMD-SHELL`, e.g. `test: ["CMD-SHELL", "</dev/tcp/localhost/9090"]`.
 
 ## 🔐 Security Notes
-- Keep `/home/administrator/secrets/mcp-proxy.env` permissioned to `600`.
+- Keep `$HOME/projects/secrets/mcp-proxy.env` permissioned to `600`.
 - Bridges expose stdio tools only on `mcp-net`. Do not publish ports unless debugging.
 - Rotate `MCP_PROXY_TOKEN` regularly; rerun `render-config.sh` and restart proxy afterward.
 

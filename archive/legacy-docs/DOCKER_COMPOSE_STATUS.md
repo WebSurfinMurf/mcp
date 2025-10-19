@@ -30,19 +30,19 @@
 - **Status**: Healthy
 - **Port**: 8586 (external) → 8080 (internal)
 - **Purpose**: SSE proxy for stdio MCP servers (transitional)
-- **Networks**: mcp-internal, traefik-proxy, loki-net
+- **Networks**: mcp-internal, traefik-net, loki-net
 - **Test**: `curl http://localhost:8586/servers/filesystem/sse`
 
 #### mcp-monitoring-standalone (Prepared 🔄)
 - **Status**: Restarting (expected - stdio mode)
 - **Purpose**: Monitoring MCP (Loki + Netdata)
-- **Networks**: mcp-internal, loki-net, traefik-proxy
+- **Networks**: mcp-internal, loki-net, traefik-net
 - **Note**: Needs SSE wrapper to run properly
 
 ### 4. Networks Created
 - `mcp-internal`: Internal communication between MCP services
 - `loki-net`: Created for monitoring integration
-- Using existing: `traefik-proxy`, `postgres-net`
+- Using existing: `traefik-net`, `postgres-net`
 
 ## 🚀 What's Working Now
 
@@ -147,11 +147,11 @@ LiteLLM → Individual MCP containers with SSE
 ### docker-compose.yml
 - Location: `/home/administrator/projects/mcp/docker-compose.yml`
 - Services: mcp-proxy, mcp-monitoring-standalone
-- Networks: mcp-internal, traefik-proxy, postgres-net, loki-net
+- Networks: mcp-internal, traefik-net, postgres-net, loki-net
 
 ### Environment Variables
 - Can be added to `.env` file in project root
-- Or sourced from `/home/administrator/secrets/mcp.env`
+- Or sourced from `$HOME/projects/secrets/mcp.env`
 
 ## 🐛 Troubleshooting
 

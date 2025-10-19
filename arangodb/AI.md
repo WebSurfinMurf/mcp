@@ -213,7 +213,7 @@ Create dedicated MCP service account with:
 - ❌ NOT on `traefik-net` (no direct internet exposure)
 
 ### Credentials
-- Store in `/home/administrator/projects/secrets/mcp-arangodb.env`
+- Store in `$HOME/projects/secrets/mcp-arangodb.env`
 - Use secure password generation
 - Never commit to git
 

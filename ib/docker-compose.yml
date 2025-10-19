@@ -8,7 +8,7 @@ services:
     container_name: mcp-ib
     restart: unless-stopped
     env_file:
-      - /home/administrator/projects/secrets/mcp-ib.env
+      - $HOME/projects/secrets/mcp-ib.env
     environment:
       IB_HOST: ${IB_HOST:-mcp-ib-gateway}
       IB_PORT: ${IB_PORT:-4002}
@@ -34,7 +34,7 @@ services:
     container_name: mcp-ib-gateway
     restart: unless-stopped
     env_file:
-      - /home/administrator/projects/secrets/mcp-ib.env
+      - $HOME/projects/secrets/mcp-ib.env
     environment:
       TWS_USERID: ${IB_USERNAME}
       TWS_PASSWORD: ${IB_PASSWORD}

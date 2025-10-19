@@ -64,7 +64,7 @@ claude mcp add playwright http://127.0.0.1:9075/sse --transport sse --scope user
 
 ## Configuration
 
-Environment variables (via `/home/administrator/secrets/mcp-playwright.env`):
+Environment variables (via `$HOME/projects/secrets/mcp-playwright.env`):
 - `MCP_SERVER_NAME`: Service identifier
 - `TEMP_PATH`: Temporary file storage location
 - `PLAYWRIGHT_BROWSERS_PATH`: Browser installation path

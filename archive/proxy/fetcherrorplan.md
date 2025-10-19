@@ -11,7 +11,7 @@ This plan will fix the configuration rendering, restart the services, and then p
 This phase will correct the variable mismatch and safely re-render the `config.json` file.
 
 **1. Correct the Secrets File:**
-   - **Action:** Modify `/home/administrator/secrets/mcp-proxy.env` to use the correct variable name.
+   - **Action:** Modify `$HOME/projects/secrets/mcp-proxy.env` to use the correct variable name.
    - **Change:** Rename `PROXY_API_KEY` to `MCP_PROXY_TOKEN`.
 
 **2. Update the Configuration Template:**
@@ -38,7 +38,7 @@ This phase will apply the corrected configuration and perform a full, end-to-end
    - **Goal:** Force the proxy to load the new, correctly rendered configuration file.
 
 **2. Source Secrets:**
-   - **Action:** `source /home/administrator/secrets/mcp-proxy.env`
+   - **Action:** `source $HOME/projects/secrets/mcp-proxy.env`
    - **Goal:** Load the `$MCP_PROXY_TOKEN` for use in verification commands.
 
 **3. Verify Proxy Health and Route:**

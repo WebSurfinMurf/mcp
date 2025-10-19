@@ -10,8 +10,8 @@ echo "Deploying MCP Filesystem Service"
 echo "====================================="
 
 # Load environment
-if [ -f "/home/administrator/secrets/${PROJECT_NAME}.env" ]; then
-    source /home/administrator/secrets/${PROJECT_NAME}.env
+if [ -f "$HOME/projects/secrets/${PROJECT_NAME}.env" ]; then
+    source $HOME/projects/secrets/${PROJECT_NAME}.env
     echo "✓ Environment loaded from secrets/${PROJECT_NAME}.env"
 else
     echo "⚠ No environment file found, using defaults"
@@ -86,7 +86,7 @@ cat >> /home/administrator/projects/mcp/CLAUDE.md <<'EOF_DOC'
 - **Endpoint**: http://127.0.0.1:9073/sse
 - **Container**: ${PROJECT_NAME}
 - **Network**: Standalone (no dependencies)
-- **Environment**: /home/administrator/secrets/${PROJECT_NAME}.env
+- **Environment**: $HOME/projects/secrets/${PROJECT_NAME}.env
 - **Workspace**: /home/administrator/projects (read-only)
 EOF_DOC
 

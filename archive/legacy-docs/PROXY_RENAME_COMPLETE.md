@@ -17,7 +17,7 @@ Successfully renamed the proxy directory and all references to maintain consiste
 - `/home/administrator/projects/mcp/NAMING_STANDARDIZATION.md` - Updated proxy path references
 
 ### 3. Created Environment File
-- `/home/administrator/secrets/mcp-proxy-sse.env` - Standardized environment configuration
+- `$HOME/projects/secrets/mcp-proxy-sse.env` - Standardized environment configuration
 
 ### 4. Service Restart
 - Stopped old proxy container
@@ -44,7 +44,7 @@ mcp-timescaledb    Spawned on demand
 - Directory: `proxy-sse`
 - Container: `mcp-proxy-sse`
 - Config: `/home/administrator/projects/mcp/proxy-sse/servers-production.json`
-- Secrets: `/home/administrator/secrets/mcp-proxy-sse.env`
+- Secrets: `$HOME/projects/secrets/mcp-proxy-sse.env`
 
 All naming now follows consistent pattern!
 

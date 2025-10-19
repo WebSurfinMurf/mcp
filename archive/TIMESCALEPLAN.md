@@ -160,7 +160,7 @@ Claude Code → MCP Orchestrator → HTTP Request → TimescaleDB HTTP Service �
    - Update Claude Code bridge integration
 
 3. **Security & Configuration**
-   - Secure database credentials in `/home/administrator/secrets/mcp-server.env`
+   - Secure database credentials in `$HOME/projects/secrets/mcp-server.env`
    - Implement connection validation and timeout protection
    - Add request logging and monitoring capabilities
 
@@ -312,7 +312,7 @@ docker compose -f docker-compose.microservices.yml down mcp-timescaledb-http
 
 ### **Environment Variables Migration**
 ```bash
-# Update /home/administrator/secrets/mcp-server.env
+# Update $HOME/projects/secrets/mcp-server.env
 # Add TimescaleDB HTTP service configuration
 TIMESCALEDB_HTTP_ENDPOINT=http://mcp-timescaledb-http:8080
 TSDB_HOST=timescaledb

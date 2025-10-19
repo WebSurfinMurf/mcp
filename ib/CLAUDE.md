@@ -66,7 +66,7 @@ The IB Gateway Docker image uses `socat` to work around TrustedIPs limitations:
 
 ### Files
 - **Docker Compose**: `/home/administrator/projects/mcp/ib/docker-compose.yml`
-- **Credentials**: `/home/administrator/projects/secrets/mcp-ib.env` ⚠️ CONFIDENTIAL
+- **Credentials**: `$HOME/projects/secrets/mcp-ib.env` ⚠️ CONFIDENTIAL
 - **HTTP Server**: `/home/administrator/projects/mcp/ib/src/server.py`
 - **Proxy Wrapper**: `/home/administrator/projects/mcp/proxy/wrappers/ib-wrapper.sh`
 - **Dockerfile**: `/home/administrator/projects/mcp/ib/Dockerfile`
@@ -215,7 +215,7 @@ Add to `.kilocode/mcp.json`:
 ```bash
 # Start services
 cd /home/administrator/projects/mcp/ib
-set -a && source /home/administrator/projects/secrets/mcp-ib.env && set +a
+set -a && source $HOME/projects/secrets/mcp-ib.env && set +a
 docker compose up -d
 
 # Check status
@@ -331,7 +331,7 @@ docker logs mcp-ib --since 5m | grep -E "INFO|ERROR"
 - **API Limits**: Same as live account
 
 ### Security Considerations
-- **Credentials**: Stored in `/home/administrator/projects/secrets/` (NOT in git)
+- **Credentials**: Stored in `$HOME/projects/secrets/` (NOT in git)
 - **Read-Only Mode**: IB_READONLY=true prevents order placement
 - **API Access**: Limited to Docker network (mcp-ib-net)
 - **VNC Access**: Password-protected, only on localhost:15900
@@ -360,7 +360,7 @@ docker logs mcp-ib --since 5m | grep -E "INFO|ERROR"
 ## 📚 Documentation References
 - **Main Documentation**: `/home/administrator/projects/mcp/CLAUDE.md`
 - **Tools List**: `/home/administrator/projects/AINotes/MCPtools.md`
-- **Secrets**: `/home/administrator/projects/secrets/mcp-ib.env`
+- **Secrets**: `$HOME/projects/secrets/mcp-ib.env`
 - **IB Gateway Image**: https://github.com/gnzsnz/ib-gateway-docker
 - **ib-mcp Package**: https://pypi.org/project/ib-mcp/
 

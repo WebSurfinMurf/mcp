@@ -9,9 +9,9 @@ cd "$SCRIPT_DIR"
 echo "Deploying IB MCP Server with IB Gateway..."
 
 # Check if env file exists
-if [ ! -f /home/administrator/projects/secrets/mcp-ib.env ]; then
-    echo "Error: /home/administrator/projects/secrets/mcp-ib.env not found."
-    echo "Please copy .env.example to /home/administrator/projects/secrets/mcp-ib.env and configure it."
+if [ ! -f $HOME/projects/secrets/mcp-ib.env ]; then
+    echo "Error: $HOME/projects/secrets/mcp-ib.env not found."
+    echo "Please copy .env.example to $HOME/projects/secrets/mcp-ib.env and configure it."
     exit 1
 fi
 

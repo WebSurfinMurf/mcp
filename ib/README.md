@@ -27,11 +27,11 @@ This setup includes:
 
 1. **Copy environment file:**
    ```bash
-   cp .env.example /home/administrator/projects/secrets/mcp-ib.env
+   cp .env.example $HOME/projects/secrets/mcp-ib.env
    ```
 
 2. **Configure credentials:**
-   Edit `/home/administrator/projects/secrets/mcp-ib.env` and set your IB credentials:
+   Edit `$HOME/projects/secrets/mcp-ib.env` and set your IB credentials:
    ```bash
    IB_USERNAME=your_username
    IB_PASSWORD=your_password

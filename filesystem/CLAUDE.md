@@ -45,7 +45,7 @@ Filesystem MCP service providing file system operations for MCP clients. Enables
 ## ⚙️ Configuration
 
 ### Environment File
-- **Location**: `/home/administrator/secrets/mcp-filesystem.env`
+- **Location**: `$HOME/projects/secrets/mcp-filesystem.env`
 - **Permissions**: 600 (owner read/write only)
 - **Variables**:
   - `MCP_SERVER_NAME=filesystem`

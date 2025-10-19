@@ -13,7 +13,7 @@ echo -e "${YELLOW}Deploying centralized MCP server with dedicated service contai
 
 PROJECT_NAME="mcp-server"
 PROJECT_DIR="/home/administrator/projects/mcp/server"
-SECRETS_FILE="/home/administrator/secrets/mcp-server.env"
+SECRETS_FILE="$HOME/projects/secrets/mcp-server.env"
 
 # Change to project directory
 cd "$PROJECT_DIR"

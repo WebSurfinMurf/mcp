@@ -13,7 +13,7 @@
 - **Claude Code Access**: ✅ Bridge fully operational via localhost:8001 port mapping
 - **External URL**: https://mcp.ai-servicers.com (pending Keycloak client setup)
 - **Microservices**: mcp-server ✅ **HEALTHY**, mcp-n8n ✅ **HEALTHY**, mcp-playwright ✅ **HEALTHY**, mcp-timescaledb-http ✅ **HEALTHY** (FIXED), mcp-server-auth-proxy ✅
-- **Networks**: traefik-proxy, postgres-net, litellm-net, observability-net, mcp-internal
+- **Networks**: traefik-net, postgres-net, litellm-net, observability-net, mcp-internal
 - **Last Major Update**: 2025-09-15 - **PRODUCTION READINESS ACHIEVED - All Issues Resolved**
 
 ## Recent Work & Changes
@@ -103,14 +103,14 @@
 - **Main Application**: `/home/administrator/projects/mcp/server/app/main.py`
 - **Microservice Compose**: `/home/administrator/projects/mcp/server/docker-compose.microservices.yml`
 - **Legacy Compose**: `/home/administrator/projects/mcp/server/docker-compose.yml`
-- **Environment Config**: `/home/administrator/secrets/mcp-server.env`
+- **Environment Config**: `$HOME/projects/secrets/mcp-server.env`
 - **Implementation Plan**: `/home/administrator/projects/mcp/LANGNEXT.md`
 - **Security Report**: `/home/administrator/projects/mcp/SECURITY_CLEANUP_REPORT.md`
 
 ## Configuration
 
 ### Microservice Environment Variables
-All configuration stored in `/home/administrator/secrets/mcp-server.env`:
+All configuration stored in `$HOME/projects/secrets/mcp-server.env`:
 - **Service endpoints**: postgres:5432, minio:9000, loki:3100, netdata:19999
 - **MCP orchestration**: MCP_N8N_ENDPOINT, MCP_N8N_AUTH_TOKEN
 - **Credentials**: PostgreSQL, MinIO, OAuth2 (from existing secrets files)
@@ -198,7 +198,7 @@ All configuration stored in `/home/administrator/secrets/mcp-server.env`:
 ### Deploy/Update Microservices
 ```bash
 cd /home/administrator/projects/mcp/server
-set -a && source /home/administrator/secrets/mcp-server.env && set +a
+set -a && source $HOME/projects/secrets/mcp-server.env && set +a
 docker compose -f docker-compose.microservices.yml up -d
 ```
 
@@ -248,7 +248,7 @@ docker exec mcp-server curl -s http://mcp-n8n:3000/health
 **Problem**: Variables not loading in Docker Compose
 ```bash
 # Load environment and deploy
-set -a && source /home/administrator/secrets/mcp-server.env && set +a
+set -a && source $HOME/projects/secrets/mcp-server.env && set +a
 docker compose -f docker-compose.microservices.yml up -d --force-recreate
 ```
 
@@ -257,7 +257,7 @@ docker compose -f docker-compose.microservices.yml up -d --force-recreate
 ### Orchestrator Pattern Security
 - **Inter-service authentication**: Bearer tokens for MCP JSON-RPC calls
 - **Network isolation**: Internal mcp-internal network for microservice communication
-- **Credential management**: All secrets in `/home/administrator/secrets/mcp-server.env`
+- **Credential management**: All secrets in `$HOME/projects/secrets/mcp-server.env`
 - **API validation**: All orchestrator tools include comprehensive error handling
 
 ### Development Pattern

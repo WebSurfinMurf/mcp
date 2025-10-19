@@ -82,5 +82,5 @@ SELECT * FROM metrics WHERE time > NOW() - INTERVAL '24 hours';
 ## Integration Points
 - **TimescaleDB Container**: Main data storage
 - **postgres-net**: Docker network for database communication
-- **Environment File**: `/home/administrator/secrets/mcp-timescaledb.env`
+- **Environment File**: `$HOME/projects/secrets/mcp-timescaledb.env`
 - **Bridge Script**: `/home/administrator/projects/mcp/timescaledb/mcp-bridge.py`

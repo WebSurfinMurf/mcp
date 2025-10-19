@@ -47,7 +47,7 @@ After creating the client:
 
 ```bash
 # Edit this file:
-sudo nano /home/administrator/secrets/mcp-server.env
+sudo nano $HOME/projects/secrets/mcp-server.env
 
 # Replace this line:
 OAUTH2_PROXY_CLIENT_SECRET=CHANGE_ME_AFTER_KEYCLOAK_SETUP

@@ -166,7 +166,7 @@ echo "Updating internal file references..."
 # Fix mcp-memory-postgres server.js
 if [ -f "mcp/memory-postgres/src/server.js" ]; then
     cp "mcp/memory-postgres/src/server.js" "$BACKUP_DIR/server.js.before"
-    sed -i "s|/home/administrator/projects/secrets/mcp-memory-postgres.env|/home/administrator/projects/secrets/mcp-memory-postgres.env|g" \
+    sed -i "s|$HOME/projects/secrets/mcp-memory-postgres.env|$HOME/projects/secrets/mcp-memory-postgres.env|g" \
         "mcp/memory-postgres/src/server.js"
     echo "✓ Updated mcp/memory-postgres/src/server.js"
 fi

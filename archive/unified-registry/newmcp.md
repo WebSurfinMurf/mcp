@@ -1022,8 +1022,8 @@ The deployment script now provides **full automation** for MCP service lifecycle
 
 3. **Environment Variable Integration**:
    - PostgreSQL: Auto-detects DATABASE_URL from environment
-   - GitHub: Extracts GITHUB_TOKEN from `/home/administrator/secrets/github.env`
-   - N8N: Extracts N8N_HOST and N8N_API_TOKEN from `/home/administrator/secrets/mcp-n8n.env`
+   - GitHub: Extracts GITHUB_TOKEN from `$HOME/projects/secrets/github.env`
+   - N8N: Extracts N8N_HOST and N8N_API_TOKEN from `$HOME/projects/secrets/mcp-n8n.env`
    - Extensible pattern for future services
 
 #### Architectural Achievement ✅ COMPLETE
