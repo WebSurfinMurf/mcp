@@ -1,0 +1,36 @@
+services:
+  mcp-matrix:
+    container_name: mcp-matrix
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:48013:3000"
+    networks:
+      - mcp-net
+      - traefik-net
+    environment:
+      - PORT=3000
+      - ENABLE_HTTPS=false
+      - ENABLE_OAUTH=false
+      - ENABLE_TOKEN_EXCHANGE=false
+      - MCP_SERVER_URL=http://mcp-matrix:3000/mcp
+    env_file:
+      - $HOME/projects/secrets/matrix-mcp.env
+    labels:
+      - "logging=promtail"
+      - "mcp.service=matrix"
+      - "mcp.port=48013"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  mcp-net:
+    external: true
+  traefik-net:
+    external: true
