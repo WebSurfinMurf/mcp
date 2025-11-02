@@ -24,12 +24,9 @@
         "NODE_NO_WARNINGS": "1"
       }
     },
-    "puppeteer": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-puppeteer@2025.5.12"],
-      "env": {
-        "NODE_NO_WARNINGS": "1"
-      }
+    "playwright": {
+      "command": "/wrappers/playwright-wrapper.sh",
+      "args": []
     },
     "memory": {
       "command": "npx",

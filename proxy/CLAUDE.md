@@ -4,14 +4,24 @@
 Central MCP proxy using TBXark/mcp-proxy to serve multiple MCP services via Streamable HTTP. Provides a unified HTTP endpoint for Claude Code to access filesystem and database operations.
 
 ## 🟢 Current State (2025-09-29)
-- **Status**: ✅ Operational with 4 services (filesystem, postgres, memory, puppeteer)
+- **Status**: ✅ Operational with 4 services (filesystem, postgres, memory, playwright)
 - **Proxy Image**: `ghcr.io/tbxark/mcp-proxy:latest`
 - **Listen Address**: `http://localhost:9090`
 - **Transport**: Streamable HTTP
-- **Services**: filesystem (9 tools), postgres (1 tool + 21 resources), memory (9 tools), puppeteer (7 tools + 1 resource)
-- **Total Tools**: 26+ tools available
+- **Services**: filesystem (9 tools), postgres (1 tool + 21 resources), memory (9 tools), playwright (6 tools)
+- **Total Tools**: 25 tools available
 
 ## 📝 Recent Work & Changes
+
+### Session: 2025-11-01 - Replaced Puppeteer with Playwright
+- **Removed**: Puppeteer MCP (npm package @modelcontextprotocol/server-puppeteer)
+- **Added**: Playwright MCP integration via wrapper script
+- **Created**: `/wrappers/playwright-wrapper.sh` - HTTP-to-stdio bridge for mcp-playwright container
+- **Updated**: `config.json` - replaced "puppeteer" with "playwright" entry
+- **Tools**: 6 tools available (navigate_to_page, take_screenshot, extract_text, click_element, fill_form, get_page_info)
+- **Container**: mcp-playwright:8000/mcp (Chromium headless, 2GB shm_size)
+- **Verified**: ✅ All tools accessible via http://localhost:9090/playwright/mcp
+- **Reason**: Using actual deployed Playwright container instead of npm package
 
 ### Session: 2025-09-29 - Initial Deployment Complete
 - **Fixed**: Package version issue - changed `@modelcontextprotocol/server-filesystem` from non-existent `0.2.3` to working `0.6.2`

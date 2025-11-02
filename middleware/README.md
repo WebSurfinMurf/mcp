@@ -10,8 +10,8 @@ Open WebUI → Middleware (port 4001) → LiteLLM (port 4000) → Anthropic/Open
         Fetches tools from
         MCP Proxy (port 9090)
                 ↓
-        9 Active MCP Servers (64 tools):
-        - filesystem, postgres, puppeteer, memory
+        9 Active MCP Servers (63 tools):
+        - filesystem, postgres, playwright, memory
         - minio, n8n, timescaledb, ib, arangodb
 ```
 
@@ -99,4 +99,4 @@ The ArangoDB MCP server has been successfully integrated with the middleware:
 
 **Status**: ✅ Fully operational (integrated 2025-10-14)
 **Documentation**: `/home/administrator/projects/mcp/arangodb/AI.md`
-**Total Tools Now**: 64 across 9 servers
+**Total Tools Now**: 63 across 9 servers (updated 2025-11-01: Playwright replaced Puppeteer, 6 tools vs 7)

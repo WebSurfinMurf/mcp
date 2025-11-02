@@ -346,7 +346,7 @@ docker logs mcp-ib --since 5m | grep -E "INFO|ERROR"
 ### Other MCP Services
 - **Filesystem**: File operations (9 tools)
 - **PostgreSQL**: Database queries (1 tool)
-- **Puppeteer**: Browser automation (7 tools)
+- **Playwright**: Browser automation (6 tools)
 - **Memory**: Knowledge graph (9 tools)
 - **MinIO**: S3 storage (9 tools)
 - **N8N**: Workflow automation (6 tools)

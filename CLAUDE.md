@@ -4,8 +4,8 @@
 Complete Model Context Protocol (MCP) integration providing 57+ tools across 8 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
 **Quick Stats:**
-- **MCP Servers**: 9 active (filesystem, postgres, puppeteer, memory, minio, n8n, timescaledb, ib, arangodb)
-- **Total Tools**: 64 tools available
+- **MCP Servers**: 9 active (filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb)
+- **Total Tools**: 63 tools available
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 - **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
@@ -58,10 +58,11 @@ Individual MCP Servers (7 services)
 - Tool: execute_sql (restricted mode)
 - Primary database operations
 
-### 🌐 Puppeteer (7 tools)
+### 🌐 Playwright (6 tools)
 - Headless Chromium automation
-- Tools: navigate, screenshot, click, evaluate, console
+- Tools: navigate, screenshot, click, extract_text, fill_form, get_page_info
 - Browser-based web interaction
+- Container: mcp-playwright (port 8000)
 
 ### 🧠 Memory (9 tools)
 - KG (Knowledge Graph) memory storage
@@ -113,7 +114,7 @@ Individual MCP Servers (7 services)
 ### Dual Model Configuration
 Open WebUI offers two model choices:
 1. **claude-sonnet-4-5**: Direct LiteLLM (no MCP tools)
-2. **claude-sonnet-4-5-mcp**: Via middleware (64 MCP tools)
+2. **claude-sonnet-4-5-mcp**: Via middleware (63 MCP tools)
 
 ### Configuration
 **Admin Settings → Connections:**
@@ -127,14 +128,14 @@ Open WebUI offers two model choices:
 ### Special Commands
 - **"list tools"**: Triggers `mcp_list_all_tools` function
 - Returns formatted markdown table organized by server
-- Shows all 64 tools with descriptions
+- Shows all 63 tools with descriptions
 
 ---
 
 ## Middleware Details
 
 ### Tool Execution Loop
-1. Inject 64 MCP tools into request
+1. Inject 63 MCP tools into request
 2. Call LiteLLM with tools enabled
 3. If response contains tool_calls:
    - Execute each tool via MCP proxy
@@ -197,10 +198,10 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 
 ### Example Queries
 ```
-"list tools" → Shows all 64 MCP tools organized by server
+"list tools" → Shows all 63 MCP tools organized by server
 "list postgres databases" → Calls mcp_postgres_execute_sql
 "read the config file" → Calls mcp_filesystem_read_file
-"take screenshot of example.com" → Calls mcp_puppeteer_navigate + screenshot
+"take screenshot of example.com" → Calls mcp_playwright_navigate + screenshot
 "upload file to minio" → Calls mcp_minio_upload_object
 "query timescaledb" → Calls mcp_timescaledb_execute_query
 "get AAPL historical data" → Calls mcp_ib_get_historical_data
@@ -222,9 +223,9 @@ docker exec open-webui curl http://mcp-middleware:8080/health
       "type": "streamable-http",
       "url": "http://linuxserver.lan:9090/postgres/mcp"
     },
-    "puppeteer": {
+    "playwright": {
       "type": "streamable-http",
-      "url": "http://linuxserver.lan:9090/puppeteer/mcp"
+      "url": "http://linuxserver.lan:9090/playwright/mcp"
     },
     "memory": {
       "type": "streamable-http",
@@ -316,7 +317,7 @@ docker logs litellm -f
 1. **Database** → postgres or timescaledb
 2. **AI Memory/Context** → arangodb (multi-model database)
 3. **Files** → filesystem
-4. **Web** → puppeteer
+4. **Web** → playwright
 5. **Storage** → minio
 6. **Automation** → n8n
 7. **Memory** → memory (legacy KG store)
@@ -367,7 +368,7 @@ docker logs litellm -f
 ### Key Features
 - **Streamable HTTP Transport**: All servers accessible via single proxy endpoint
 - **Auto-discovery**: Tools automatically loaded from each server
-- **64 Total Tools**: Full access to all MCP capabilities
+- **63 Total Tools**: Full access to all MCP capabilities
 - **Network Access**: Works from external machines via `linuxserver.lan:9090`
 
 ### Troubleshooting
@@ -407,5 +408,5 @@ docker logs litellm -f
 
 ---
 
-**Project Status**: ✅ Production (9 servers, 64 tools, automatic execution)
-**Last Updated**: 2025-10-14 (ArangoDB MCP integration complete)
+**Project Status**: ✅ Production (9 servers, 63 tools, automatic execution)
+**Last Updated**: 2025-11-01 (Playwright replaced Puppeteer - 6 tools vs 7)

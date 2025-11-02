@@ -24,7 +24,7 @@ MAX_TOOL_ITERATIONS = 5
 MCP_SERVERS = {
     "filesystem": "/filesystem/mcp",
     "postgres": "/postgres/mcp",
-    "puppeteer": "/puppeteer/mcp",
+    "playwright": "/playwright/mcp",
     "memory": "/memory/mcp",
     "minio": "/minio/mcp",
     "n8n": "/n8n/mcp",
