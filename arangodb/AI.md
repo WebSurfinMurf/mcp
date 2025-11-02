@@ -314,7 +314,7 @@ Create dedicated MCP service account with:
 
 **Status**: ✅ Fully Deployed and Operational
 **Total Tools**: 7 ArangoDB operations
-**Total MCP Infrastructure**: 9 servers, 64 tools (updated 2025-10-14)
+**Total MCP Infrastructure**: 9 servers, 63 tools (updated 2025-11-01: Playwright replaced Puppeteer)
 **Integration**: Open WebUI, Kilo Code, Claude Code CLI
 
 ---
