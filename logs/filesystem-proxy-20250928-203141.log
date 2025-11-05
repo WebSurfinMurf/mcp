@@ -1,8 +1,0 @@
-=== Filesystem Proxy Deployment ===
-Sun Sep 28 08:31:41 PM EDT 2025
-
---- Ensure network exists ---
---- Start proxy container ---
-mcp-proxy-test
-b3af27aa5b7f5490fae287d4a869fdc1a6a58374696de5f1f193bb38400f7495
---- Wait for proxy health ---
