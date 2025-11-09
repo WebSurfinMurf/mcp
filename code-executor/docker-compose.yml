@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  mcp-code-executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-code-executor
+    hostname: mcp-code-executor
+    restart: unless-stopped
+
+    # Networks
+    networks:
+      - mcp-net
+
+    # Ports
+    ports:
+      - "9091:3000"  # Executor API
+
+    # Environment
+    environment:
+      - NODE_ENV=production
+      - MCP_PROXY_URL=http://mcp-proxy:9090
+      - PORT=3000
+      - CODE_EXECUTOR_URL=http://localhost:3000
+      - EXECUTION_TIMEOUT=300000  # 5 minutes
+
+    # Volumes
+    volumes:
+      - workspace-data:/workspace
+      - /etc/localtime:/etc/localtime:ro
+
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    read_only: false  # Need write access to /tmp and /workspace
+    tmpfs:
+      - /tmp/executions:size=100M,noexec,nodev,nosuid,uid=1000,gid=1000
+
+    # Resource limits
+    mem_limit: 1g
+    cpus: 1.0
+
+    # User
+    user: "1000:1000"
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "container_name,container_image"
+        tag: "{{.Name}}"
+
+    labels:
+      - "com.docker.compose.project=mcp"
+      - "description=MCP Code Executor - Sandboxed TypeScript/Python execution"
+
+networks:
+  mcp-net:
+    external: true
+
+volumes:
+  workspace-data:
+    driver: local
+    name: mcp-executor-workspace

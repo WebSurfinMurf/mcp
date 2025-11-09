@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "code-executor": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "mcp-code-executor",
+        "npm",
+        "run",
+        "mcp"
+      ],
+      "description": "Execute TypeScript code with access to all 63 MCP tools. Supports progressive disclosure (85-97% token savings), multi-tool workflows, and complex data operations.",
+      "env": {
+        "CODE_EXECUTOR_URL": "http://localhost:9091"
+      }
+    }
+  }
+}
