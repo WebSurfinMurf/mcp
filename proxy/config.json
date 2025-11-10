@@ -18,11 +18,8 @@
       }
     },
     "postgres": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres@0.6.2", "postgresql://admin:Pass123qp@postgres:5432/postgres"],
-      "env": {
-        "NODE_NO_WARNINGS": "1"
-      }
+      "command": "/wrappers/postgres-wrapper.sh",
+      "args": []
     },
     "playwright": {
       "command": "/wrappers/playwright-wrapper.sh",
