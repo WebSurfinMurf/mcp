@@ -3,8 +3,7 @@ set -euo pipefail
 
 TARGET_KEY="filesystem"
 FILE_LIST=(
-  /home/administrator/projects/.claude.json
-  /home/administrator/.claude.json
+  /home/administrator/projects/.claude/mcp.json
   /home/administrator/.config/claude/mcp-settings.json
   /home/administrator/.config/claude/mcp-servers.json
 )

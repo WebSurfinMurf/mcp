@@ -27,7 +27,7 @@ docker exec mcp-code-executor npm install
 
 ```bash
 # Add the code-executor server to your Claude Code MCP config
-cat >> ~/.claude/mcp.json << 'EOF'
+cat >> $HOME/projects/.claude/mcp.json << 'EOF'
 {
   "mcpServers": {
     "code-executor": {

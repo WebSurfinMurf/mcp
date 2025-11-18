@@ -9,7 +9,7 @@ All setup is complete. The following has been configured:
 - ✅ MCP SDK installed: @modelcontextprotocol/sdk
 - ✅ MCP server file: mcp-server.ts
 - ✅ Tool wrappers generated: 63 tools across 9 servers
-- ✅ Claude CLI config: ~/.claude/mcp.json created
+- ✅ Claude CLI config: $HOME/projects/.claude/mcp.json created
 - ✅ Open WebUI functions: openwebui-functions.py ready
 - ✅ Integration docs: INTEGRATION.md complete
 
@@ -198,8 +198,8 @@ console.log(JSON.stringify(summary, null, 2));
 
 **Check:**
 ```bash
-# Verify ~/.claude/mcp.json exists and has code-executor
-cat ~/.claude/mcp.json
+# Verify $HOME/projects/.claude/mcp.json exists and has code-executor
+cat $HOME/projects/.claude/mcp.json
 
 # Verify container is running
 docker ps --filter name=mcp-code-executor

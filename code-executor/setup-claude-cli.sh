@@ -50,21 +50,21 @@ curl -s http://localhost:9091/health | jq -r '"✅ API healthy - \(.servers) ser
 # Check MCP config
 echo
 echo "7. Checking Claude Code MCP configuration..."
-if [ -f "$HOME/.claude/mcp.json" ]; then
-    if grep -q "code-executor" "$HOME/.claude/mcp.json"; then
-        echo "✅ code-executor already configured in ~/.claude/mcp.json"
+if [ -f "$HOME/projects/.claude/mcp.json" ]; then
+    if grep -q "code-executor" "$HOME/projects/.claude/mcp.json"; then
+        echo "✅ code-executor already configured in $HOME/projects/.claude/mcp.json"
     else
-        echo "⚠️  code-executor NOT found in ~/.claude/mcp.json"
+        echo "⚠️  code-executor NOT found in $HOME/projects/.claude/mcp.json"
         echo
-        echo "Add this to your ~/.claude/mcp.json:"
+        echo "Add this to your $HOME/projects/.claude/mcp.json:"
         echo
         cat /home/administrator/projects/mcp/code-executor/claude-mcp-config.json
         echo
     fi
 else
-    echo "⚠️  ~/.claude/mcp.json does not exist"
+    echo "⚠️  $HOME/projects/.claude/mcp.json does not exist"
     echo
-    echo "Create ~/.claude/mcp.json with:"
+    echo "Create $HOME/projects/.claude/mcp.json with:"
     echo
     cat /home/administrator/projects/mcp/code-executor/claude-mcp-config.json
     echo
@@ -75,7 +75,7 @@ echo "=== Setup Complete ==="
 echo
 echo "Next steps:"
 echo "1. Exit Claude Code CLI"
-echo "2. Ensure ~/.claude/mcp.json includes code-executor config (shown above if needed)"
+echo "2. Ensure $HOME/projects/.claude/mcp.json includes code-executor config (shown above if needed)"
 echo "3. Restart Claude Code CLI"
 echo "4. Test with: 'List available MCP servers'"
 echo
