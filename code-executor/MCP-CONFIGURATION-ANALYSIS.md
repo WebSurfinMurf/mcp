@@ -9,7 +9,7 @@
 
 Code-executor MCP server is configured in **3 different files**:
 
-### 1. `$HOME/.claude/mcp.json` (Primary User Config)
+### 1. `$HOME/projects/.claude/mcp.json` (Primary User Config)
 ```json
 {
   "mcpServers": {
@@ -45,7 +45,7 @@ Code-executor MCP server is configured in **3 different files**:
 - **Purpose**: Global MCP server definitions
 - **Status**: ✅ Updated 2025-11-08 19:06 UTC
 
-### 3. `$HOME/.claude.json` (Project-Scoped Config)
+### 3. `$HOME/projects/.claude.json` (Project-Scoped Config)
 ```json
 {
   "projects": {
@@ -90,8 +90,8 @@ code-executor: docker exec -i mcp-code-executor npm run mcp - ✓ Connected
 
 ### Session Timeline (Primary Claude)
 1. **18:39:37** - Claude Code session started
-2. **18:40:20** - code-executor added to `~/.claude.json` (project-scoped)
-3. **18:45-19:10** - Added to `~/.claude/mcp.json` and `~/.config/claude/mcp-servers.json`
+2. **18:40:20** - code-executor added to `$HOME/projects/.claude.json` (project-scoped)
+3. **18:45-19:10** - Added to `$HOME/projects/.claude/mcp.json` and `~/.config/claude/mcp-servers.json`
 4. **Result**: Tools not available (session started before any config existed)
 
 ### Session Timeline (Secondary Claude Round 2)
@@ -116,9 +116,9 @@ Claude Code may read from a different config file than `claude mcp list`:
 
 **Possible precedence order**:
 1. Project-scoped: `.claude/mcp.json` in project directory
-2. User-level: `$HOME/.claude/mcp.json`
+2. User-level: `$HOME/projects/.claude/mcp.json`
 3. Global: `$HOME/.config/claude/mcp-servers.json`
-4. System: `$HOME/.claude.json`
+4. System: `$HOME/projects/.claude.json`
 
 **Issue**: We have code-executor in #2, #3, and #4 but maybe Claude Code only reads #1?
 
@@ -202,11 +202,11 @@ const response = await fetch('http://localhost:9091/execute', {
 **Cons**: Not as elegant as MCP tools
 
 ### Option 3: Consolidate Config (Recommended)
-Remove code-executor from all locations except `$HOME/.claude/mcp.json`:
+Remove code-executor from all locations except `$HOME/projects/.claude/mcp.json`:
 
 ```bash
 # Keep only this file
-cat > $HOME/.claude/mcp.json <<'EOF'
+cat > $HOME/projects/.claude/mcp.json <<'EOF'
 {
   "mcpServers": {
     "code-executor": {

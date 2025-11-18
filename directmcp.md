@@ -237,7 +237,7 @@ This ensures MCP services only access what they need, not underlying infrastruct
 ### CLI-Specific Issues
 - **Claude Code**: Default back to stdio means missing `--transport sse`
 - **Codex**: Registration syntax differs - use `--type sse --url` format
-- **Configuration persistence**: Claude uses `~/.claude.json`, Codex may use different config
+- **Configuration persistence**: Claude uses `$HOME/projects/.claude/`, Codex may use different config
 
 ## Troubleshooting Commands
 
@@ -281,7 +281,7 @@ curl -i http://n8n:5678/healthz   # (from within n8n-net)
 - **Environment Files**: `secrets/mcp-{service}.env` - Authentication and configuration
 - **Service Documentation**: `projects/mcp/{service}/CLAUDE.md` - Per-service documentation
 - **CLI Configuration**:
-  - Claude Code: `~/.claude.json` (user scope)
+  - Claude Code: `$HOME/projects/.claude/` (project scope)
   - Codex: Check Codex documentation for config location
 
 ## Port Reference Quick Guide

@@ -31,13 +31,13 @@
 
 **Created:**
 - `mcp-server.ts` - MCP server wrapper for stdio transport
-- `claude-mcp-config.json` - Configuration for `~/.claude/mcp.json`
+- `claude-mcp-config.json` - Configuration for `$HOME/projects/.claude/mcp.json`
 - Updated `package.json` with MCP SDK dependency
 - `INTEGRATION.md` - Complete setup and usage guide
 
 **Installation:**
 ```bash
-# Add to ~/.claude/mcp.json
+# Add to $HOME/projects/.claude/mcp.json
 {
   "mcpServers": {
     "code-executor": {
