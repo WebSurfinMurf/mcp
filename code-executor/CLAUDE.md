@@ -8,7 +8,22 @@
 
 ## Overview
 
-Sandboxed TypeScript/Python execution environment for MCP tools implementing progressive disclosure pattern for 85-97% token reduction.
+**IMPORTANT: This is an MCP CLIENT, not an MCP server.**
+
+Sandboxed TypeScript/Python execution environment that CONSUMES MCP tools via the MCP proxy. Implements progressive disclosure pattern for 85-97% token reduction.
+
+**Architecture Role:**
+```
+Claude Code → Code Executor (client) → MCP Proxy → MCP Servers
+```
+
+Code-executor provides:
+- Sandboxed execution environment (TypeScript/Python)
+- HTTP API for code execution (port 9091)
+- MCP client library for calling tools
+- Progressive disclosure API for token efficiency
+
+Code-executor does NOT provide MCP tools - it consumes them from the proxy.
 
 **Production Status**:
 - ✅ Phase 1: Core infrastructure (code execution, wrappers, security) - PRODUCTION READY

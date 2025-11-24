@@ -3,15 +3,26 @@
 ## 📋 Project Overview
 Central MCP proxy using TBXark/mcp-proxy to serve multiple MCP services via Streamable HTTP. Provides a unified HTTP endpoint for Claude Code to access filesystem and database operations.
 
-## 🟢 Current State (2025-09-29)
-- **Status**: ✅ Operational with 4 services (filesystem, postgres, memory, playwright)
+## 🟢 Current State (2025-11-23)
+- **Status**: ✅ Operational with 10 services
 - **Proxy Image**: `ghcr.io/tbxark/mcp-proxy:latest`
 - **Listen Address**: `http://localhost:9090`
 - **Transport**: Streamable HTTP
-- **Services**: filesystem (9 tools), postgres (1 tool + 21 resources), memory (9 tools), playwright (6 tools)
-- **Total Tools**: 25 tools available
+- **Services**: filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb, openmemory
+- **Total Tools**: 67 tools available across all services
 
 ## 📝 Recent Work & Changes
+
+### Session: 2025-11-23 - OpenMemory MCP Integration
+- **Added**: OpenMemory MCP server for semantic memory operations
+- **Created**: `/wrappers/openmemory-wrapper.sh` - HTTP-to-stdio bridge for mcp-openmemory container
+- **Updated**: `config.json` - added "openmemory" server entry
+- **Tools**: 4 tools available (add_memory, search_memories, list_memories, delete_memory)
+- **Container**: mcp-openmemory:8000/mcp (FastAPI HTTP wrapper for OpenMemory REST API)
+- **Backend**: mem0 v1.0.0 with Gemini embeddings (768-dim), Qdrant vector store
+- **Verified**: ✅ All tools accessible via http://localhost:9090/openmemory/mcp
+- **Integration**: `/cmemory` slash command uses OpenMemory MCP tools
+- **Total Services**: 10 servers with 67 tools
 
 ### Session: 2025-11-01 - Replaced Puppeteer with Playwright
 - **Removed**: Puppeteer MCP (npm package @modelcontextprotocol/server-puppeteer)
@@ -33,17 +44,72 @@ Central MCP proxy using TBXark/mcp-proxy to serve multiple MCP services via Stre
 ## 🏗️ Architecture
 
 ```
-Claude Code CLI
+Claude Code CLI / Open WebUI / Laptop
         │ (HTTP)
         ▼
 TBXark Proxy (localhost:9090)
         ├── /filesystem/mcp → npx @modelcontextprotocol/server-filesystem@0.6.2
-        └── /postgres/mcp → npx @modelcontextprotocol/server-postgres@0.6.2
+        ├── /postgres/mcp → npx @modelcontextprotocol/server-postgres@0.6.2
+        ├── /playwright/mcp → wrapper → mcp-playwright:8000
+        ├── /memory/mcp → npx @modelcontextprotocol/server-memory
+        ├── /minio/mcp → wrapper → mcp-minio:9076
+        ├── /n8n/mcp → wrapper → n8n:5678
+        ├── /timescaledb/mcp → wrapper → mcp-timescaledb:48011
+        ├── /ib/mcp → wrapper → mcp-ib:48012
+        ├── /arangodb/mcp → npx arango-server (stdio)
+        └── /openmemory/mcp → wrapper → mcp-openmemory:8000
 ```
+
+### MCP Services (10 servers, 67 tools)
+
+**📁 Filesystem** (9 tools) - File operations
+- npx @modelcontextprotocol/server-filesystem@0.6.2
+- Workspace: `/workspace` (read-only)
+
+**🗄️ PostgreSQL** (1 tool) - Database operations
+- npx @modelcontextprotocol/server-postgres@0.6.2
+- Connection: postgres:5432/postgres
+
+**🌐 Playwright** (6 tools) - Browser automation
+- HTTP wrapper to mcp-playwright:8000
+- Headless Chromium for web interactions
+
+**🧠 Memory** (9 tools) - Knowledge graph storage
+- npx @modelcontextprotocol/server-memory
+- Persistent JSONL storage in mcp-memory-data volume
+
+**🪣 MinIO** (9 tools) - S3-compatible object storage
+- HTTP wrapper to mcp-minio:9076
+- Connection: minio:9000
+
+**🔄 N8N** (6 tools) - Workflow automation
+- HTTP wrapper to n8n:5678
+- 400+ workflow integrations
+
+**⏰ TimescaleDB** (6 tools) - Time-series database
+- HTTP wrapper to mcp-timescaledb:48011
+- Connection: timescaledb:5432
+
+**📈 Interactive Brokers** (10 tools) - Market data
+- HTTP wrapper to mcp-ib:48012
+- Paper trading account access
+
+**🗄️ ArangoDB** (7 tools) - Multi-model database
+- npx arango-server v0.4.0 (stdio)
+- Connection: arangodb:8529/ai_memory
+
+**💾 OpenMemory** (4 tools) - Semantic memory
+- HTTP wrapper to mcp-openmemory:8000
+- Backend: mem0 v1.0.0 with Gemini embeddings
+- Integration: `/cmemory` command
 
 ### Network Configuration
 - **mcp-net**: External network for MCP service communication
 - **postgres-net**: External network for PostgreSQL database access
+- **arangodb-net**: External network for ArangoDB access
+- **timescaledb-net**: External network for TimescaleDB access
+- **mcp-ib-net**: External network for Interactive Brokers access
+- **minio-net**: External network for MinIO access
 - **Workspace Mount**: `/home/administrator/projects` → `/workspace` (read-only)
 
 ## ⚙️ Configuration
@@ -84,14 +150,28 @@ TBXark Proxy (localhost:9090)
 ## 🌐 Access & Management
 
 ### Service Endpoints
+All services accessible via TBXark proxy at `http://localhost:9090/[service]/mcp`:
+
 - **Filesystem**: `http://localhost:9090/filesystem/mcp`
 - **PostgreSQL**: `http://localhost:9090/postgres/mcp`
+- **Playwright**: `http://localhost:9090/playwright/mcp`
+- **Memory**: `http://localhost:9090/memory/mcp`
+- **MinIO**: `http://localhost:9090/minio/mcp`
+- **N8N**: `http://localhost:9090/n8n/mcp`
+- **TimescaleDB**: `http://localhost:9090/timescaledb/mcp`
+- **Interactive Brokers**: `http://localhost:9090/ib/mcp`
+- **ArangoDB**: `http://localhost:9090/arangodb/mcp`
+- **OpenMemory**: `http://localhost:9090/openmemory/mcp`
 
 ### Claude Code CLI Registration
 ```bash
-# Register both services
+# Register all services (example)
 claude mcp add filesystem http://localhost:9090/filesystem/mcp -t http
 claude mcp add postgres http://localhost:9090/postgres/mcp -t http
+claude mcp add playwright http://localhost:9090/playwright/mcp -t http
+claude mcp add memory http://localhost:9090/memory/mcp -t http
+claude mcp add openmemory http://localhost:9090/openmemory/mcp -t http
+# ... add other services as needed
 
 # Verify registration
 claude mcp list
@@ -109,6 +189,16 @@ curl -X POST http://localhost:9090/postgres/mcp \
   -H 'Content-Type: application/json' \
   -H 'Mcp-Session-Id: test' \
   -d '{"jsonrpc":"2.0","id":"2","method":"tools/call","params":{"name":"query","arguments":{"sql":"SELECT version();"}}}'
+
+# Test OpenMemory - list tools
+curl -X POST http://localhost:9090/openmemory/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"3","method":"tools/list","params":{}}'
+
+# Test OpenMemory - add memory
+curl -X POST http://localhost:9090/openmemory/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"4","method":"tools/call","params":{"name":"add_memory","arguments":{"text":"Test memory","category":"note"}}}'
 ```
 
 ## 🔗 Integration Points
@@ -124,6 +214,20 @@ curl -X POST http://localhost:9090/postgres/mcp \
 - **Tools**: 1 query tool (read-only SQL execution)
 - **Resources**: 14 database schema resources (tables from LiteLLM, monitoring tables, etc.)
 - **Network**: Requires postgres-net for database connectivity
+
+### OpenMemory Service
+- **Container**: mcp-openmemory (FastAPI HTTP server on port 48013)
+- **Backend**: OpenMemory REST API at openmemory-api:8765
+- **Tools**: 4 operations (add_memory, search_memories, list_memories, delete_memory)
+- **Features**: Semantic search with Gemini embeddings (768-dim), AI categorization, Qdrant vector storage
+- **Network**: Requires mcp-net for API connectivity
+- **Integration**: Used by `/cmemory` slash command for saving lessons learned
+- **Documentation**: `/home/administrator/projects/mcp/openmemory/CLAUDE.md`
+
+### Other Services
+For detailed information about remaining services (Playwright, Memory, MinIO, N8N, TimescaleDB, IB, ArangoDB):
+- See main MCP documentation: `/home/administrator/projects/mcp/CLAUDE.md`
+- Individual service docs: `/home/administrator/projects/mcp/[service]/CLAUDE.md` or `AI.md`
 
 ## 🛠️ Operations
 
@@ -228,13 +332,39 @@ curl -v http://localhost:9090/postgres/mcp
 
 ## 🔄 Related Services
 
-### Other MCP Services
-- **fetch**: SSE service on port 9072 (separate from proxy)
-- **postgres (stdio)**: Direct Python bridge (legacy, replaced by proxy)
+### MCP Code Executor (Client, Not a Server)
+- **Container**: mcp-code-executor (port 9091)
+- **Role**: MCP CLIENT that consumes tools from this proxy
+- **Purpose**: Sandboxed TypeScript/Python execution environment
+- **Architecture**: code-executor → mcp-proxy → MCP servers
+- **Usage**: Used by Claude Code for multi-tool workflows
+- **Documentation**: `/home/administrator/projects/mcp/code-executor/CLAUDE.md`
 
-### Infrastructure
+**IMPORTANT**: Code-executor is NOT an MCP server. It's a client that calls MCP tools through this proxy.
+
+### Individual MCP Containers
+- **mcp-playwright**: Browser automation (port 8000)
+- **mcp-minio**: S3 storage interface (port 9076)
+- **mcp-timescaledb**: Time-series queries (port 48011)
+- **mcp-ib**: Interactive Brokers market data (port 48012)
+- **mcp-openmemory**: Semantic memory operations (port 48013)
+
+### Backend Infrastructure
 - **PostgreSQL**: Main database server at postgres:5432
-- **Docker Networks**: mcp-net (MCP services), postgres-net (database access)
+- **TimescaleDB**: Time-series database at timescaledb:5432
+- **ArangoDB**: Multi-model database at arangodb:8529
+- **OpenMemory API**: mem0 backend at openmemory-api:8765
+- **MinIO**: S3 storage at minio:9000
+- **N8N**: Workflow automation at n8n:5678
+- **Qdrant**: Vector database for embeddings
+
+### Docker Networks
+- **mcp-net**: Primary MCP service communication
+- **postgres-net**: PostgreSQL database access
+- **arangodb-net**: ArangoDB access
+- **timescaledb-net**: TimescaleDB access
+- **mcp-ib-net**: Interactive Brokers access
+- **minio-net**: MinIO storage access
 
 ## 📚 Documentation References
 - **Planning**: `/home/administrator/projects/mcp/planhttp.md`
@@ -244,6 +374,7 @@ curl -v http://localhost:9090/postgres/mcp
 
 ---
 
-**Last Updated**: 2025-09-29
-**Status**: ✅ Operational - 2 services, fully tested
-**Next Steps**: Evaluate additional services (fetch, minio, playwright, etc.)
+**Last Updated**: 2025-11-23
+**Status**: ✅ Operational - 10 services, 67 tools, fully tested
+**Recent Addition**: OpenMemory MCP integration for semantic memory operations
+**Documentation**: See `/home/administrator/projects/mcp/CLAUDE.md` for complete infrastructure overview

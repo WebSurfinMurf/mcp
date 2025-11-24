@@ -11,6 +11,7 @@ services:
       - ./config.json:/config/config.json:ro
       - ./wrappers:/wrappers:ro
       - /home/administrator/projects:/workspace:ro
+      - mcp-memory-data:/app/dist
     networks:
       - mcp-net
       - postgres-net
@@ -35,3 +36,6 @@ networks:
     external: true
   arangodb-net:
     external: true
+
+volumes:
+  mcp-memory-data:

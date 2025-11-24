@@ -58,6 +58,10 @@
         "ARANGO_USERNAME": "root",
         "ARANGO_PASSWORD": "4SlfiYq6XOUZWP7jKakBksrudBhSWIqV"
       }
+    },
+    "openmemory": {
+      "command": "/wrappers/openmemory-wrapper.sh",
+      "args": []
     }
   }
 }
