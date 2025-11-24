@@ -25,13 +25,6 @@
       "command": "/wrappers/playwright-wrapper.sh",
       "args": []
     },
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory@2025.9.25"],
-      "env": {
-        "NODE_NO_WARNINGS": "1"
-      }
-    },
     "minio": {
       "command": "/wrappers/minio-wrapper.sh",
       "args": []
