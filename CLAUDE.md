@@ -1,11 +1,11 @@
 # MCP Infrastructure - Executive Summary
 
 ## Overview
-Complete Model Context Protocol (MCP) integration providing 57+ tools across 8 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
+Complete Model Context Protocol (MCP) integration providing 67+ tools across 10 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
 **Quick Stats:**
-- **MCP Servers**: 9 active (filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb)
-- **Total Tools**: 63 tools available
+- **MCP Servers**: 10 active (filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb, openmemory)
+- **Total Tools**: 67 tools available
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 - **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
@@ -42,7 +42,16 @@ Individual MCP Servers (7 services)
 
 **Individual MCP Servers** (`projects/mcp/[service]/`)
 - Native MCP protocol implementations
-- Dual transport: SSE for Claude Code CLI, stdio via bridges for Codex
+- Dual transport: SSE for Claude Code CLI, stdio via bridges for proxy
+- Total: 10 active servers with 67 tools
+
+**MCP Code Executor** (`projects/mcp/code-executor/`)
+- **Role**: MCP CLIENT (not a server)
+- Sandboxed TypeScript/Python execution environment
+- Consumes MCP tools via proxy (http://mcp-proxy:9090)
+- Provides progressive disclosure API for token reduction (85-97%)
+- Port: 9091 (HTTP API for code execution)
+- Used by Claude Code for multi-tool workflows
 
 ---
 
@@ -107,6 +116,18 @@ Individual MCP Servers (7 services)
 - Status: Fully operational (deployed 2025-10-14)
 - Documentation: `/home/administrator/projects/mcp/arangodb/AI.md`
 
+### 💾 OpenMemory (4 tools) - ✅ DEPLOYED
+- Semantic memory with AI-powered search and categorization via mem0
+- Tools: add_memory, search_memories, list_memories, delete_memory
+- Connection: openmemory-api:8765
+- Backend: mem0 v1.0.0 with Gemini embeddings (768-dim)
+- Container: mcp-openmemory (port 48013)
+- Networks: mcp-net
+- Architecture: FastAPI HTTP wrapper for OpenMemory REST API
+- Status: Fully operational (deployed 2025-11-23)
+- Integration: `/cmemory` slash command uses these tools
+- Documentation: `/home/administrator/projects/mcp/openmemory/CLAUDE.md`
+
 ---
 
 ## Open WebUI Integration
@@ -114,7 +135,7 @@ Individual MCP Servers (7 services)
 ### Dual Model Configuration
 Open WebUI offers two model choices:
 1. **claude-sonnet-4-5**: Direct LiteLLM (no MCP tools)
-2. **claude-sonnet-4-5-mcp**: Via middleware (63 MCP tools)
+2. **claude-sonnet-4-5-mcp**: Via middleware (67 MCP tools)
 
 ### Configuration
 **Admin Settings → Connections:**

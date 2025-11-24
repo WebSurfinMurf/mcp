@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mcp-openmemory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-openmemory
+    restart: unless-stopped
+    environment:
+      OPENMEMORY_API: ${OPENMEMORY_API:-http://openmemory-api:8765}
+      OPENMEMORY_USER: ${OPENMEMORY_USER:-administrator}
+      OPENMEMORY_APP: ${OPENMEMORY_APP:-claude-code}
+    ports:
+      - "48013:8000"
+    networks:
+      - mcp-net
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  mcp-net:
+    external: true
