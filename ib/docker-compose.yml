@@ -21,6 +21,7 @@ services:
     networks:
       - mcp-ib-net
       - mcp-net
+      - traefik-net
     volumes:
       - ./config:/app/config
     healthcheck:
@@ -43,8 +44,8 @@ services:
       VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
       TWOFA_TIMEOUT_ACTION: ${TWOFA_TIMEOUT_ACTION:-restart}
     ports:
-      - "14001:4001"
-      - "14002:4002"
+      - "14001:4003"   # Live trading API via socat (IB Gateway listens on 127.0.0.1:4001)
+      - "14002:4004"   # Paper trading API via socat (IB Gateway listens on 127.0.0.1:4002)
       - "15900:5900"
     volumes:
       - ./jts:/root/Jts
@@ -60,4 +61,7 @@ networks:
     external: false
   mcp-net:
     name: mcp-net
+    external: true
+  traefik-net:
+    name: traefik-net
     external: true

@@ -14,6 +14,16 @@ MCP server providing Interactive Brokers market data and portfolio operations th
 
 ## 📝 Recent Work & Changes
 
+### Session: 2025-12-01 - Fixed External Port Mappings
+- **Issue**: External IB API connections (from laptop) timing out on API handshake
+- **Root Cause**: Docker port mapping pointed to wrong internal ports
+  - Was: `14002:4002` (IB listens on localhost only, refuses external)
+  - Fixed: `14002:4004` (socat proxy, accepts external connections)
+- **Solution**: Updated docker-compose.yml port mappings:
+  - `14001:4003` (live trading via socat)
+  - `14002:4004` (paper trading via socat)
+- **Result**: External IB API connections now work from laptop
+
 ### Session: 2025-10-10 - Initial Deployment Complete
 - **Issue Discovered**: TrustedIPs configuration doesn't work in IB Gateway
 - **Root Cause**: Gateway only listens on 127.0.0.1, regardless of TrustedIPs setting
@@ -102,9 +112,10 @@ TWOFA_TIMEOUT_ACTION=restart
 **mcp-ib-gateway** (IB Gateway):
 - Image: ghcr.io/gnzsnz/ib-gateway:latest
 - Ports:
-  - 14001:4001 (live trading API via socat → 4003)
-  - 14002:4002 (paper trading API via socat → 4004)
+  - 14001:4003 (live trading API via socat)
+  - 14002:4004 (paper trading API via socat)
   - 15900:5900 (VNC server)
+- **IMPORTANT**: Ports map to socat proxy (4003/4004), NOT direct IB ports (4001/4002)!
 - Volumes:
   - ./jts:/root/Jts (Gateway settings)
   - ./ibc:/root/ibc (IBC automation config)
