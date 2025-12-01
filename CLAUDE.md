@@ -101,7 +101,7 @@ Individual MCP Servers (7 services)
 - Market data and portfolio operations for paper trading
 - Tools: lookup_contract, ticker_to_conid, get_historical_data, search_contracts, get_historical_news, get_article, get_fundamental_data, get_account_summary, get_positions, get_contract_details
 - Connection: IB Gateway (paper trading account)
-- Container: mcp-ib (port 48012), mcp-ib-gateway (ports 14002 API, 15900 VNC)
+- Container: mcp-ib (port 48012), mcp-ib-gateway (ports 14001 live, 14002 paper, 15900 VNC)
 - Networks: mcp-ib-net (internal), mcp-net (proxy access)
 - Architecture: FastAPI HTTP wrapper around ib-mcp stdio server
 
