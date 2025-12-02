@@ -14,6 +14,19 @@ MCP server providing Interactive Brokers market data and portfolio operations th
 
 ## 📝 Recent Work & Changes
 
+### Session: 2025-12-01 - Fixed Memory Leak with Process Pool
+- **Issue**: Memory leak causing container to grow from ~37MB to 1.96GB
+- **Root Cause**: Race condition in subprocess spawning - concurrent requests each spawned their own `ib_mcp.server` subprocess (33 orphan processes consuming ~2.8GB)
+- **Error**: `readuntil() called while another coroutine is already waiting for incoming data`
+- **Solution**: Rewrote `server.py` with process pool architecture:
+  - `IBWorker` class manages individual subprocesses with locks
+  - `IBWorkerPool` with configurable size (default 3 workers via `IB_POOL_SIZE`)
+  - Each worker has unique `client_id` (required by IB API)
+  - Workers start lazily on first request, auto-restart on failure
+  - FastAPI `lifespan` handler for proper lifecycle management
+- **Result**: Stable memory usage (~108MB with 1 active worker)
+- **Config**: Set `IB_POOL_SIZE=N` for more concurrent workers
+
 ### Session: 2025-12-01 - Fixed External Port Mappings
 - **Issue**: External IB API connections (from laptop) timing out on API handshake
 - **Root Cause**: Docker port mapping pointed to wrong internal ports
@@ -377,7 +390,7 @@ docker logs mcp-ib --since 5m | grep -E "INFO|ERROR"
 
 ---
 
-**Last Updated**: 2025-10-10
+**Last Updated**: 2025-12-01
 **Status**: ✅ Operational - Paper trading account connected and verified
-**Critical Fix**: Changed IB_PORT from 4002 to 4004 (socat proxy port)
-**Next Steps**: Test all 10 tools, integrate with Open WebUI via middleware
+**Architecture**: Process pool (3 workers) for concurrent request handling
+**Memory**: ~108MB with 1 active worker (fixed from 1.96GB leak)
