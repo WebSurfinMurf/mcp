@@ -22,7 +22,7 @@ MCP server for Interactive Brokers live trading. Used by administrator/productio
 - **Client ID**: 10
 
 ## Secrets
-Location: `$HOME/secrets/mcp-ib-live.env`
+Location: `$HOME/projects/secrets/mcp-ib-live.env`
 
 ## Switching to Live Trading
 
