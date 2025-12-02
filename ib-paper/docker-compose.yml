@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  mcp-ib-paper:
+    build:
+      context: ../ib
+      dockerfile: Dockerfile
+    container_name: mcp-ib-paper
+    restart: unless-stopped
+    env_file:
+      - $HOME/secrets/mcp-ib-paper.env
+    environment:
+      IB_HOST: ibgateway-paper
+      IB_PORT: 4004  # Paper trading via socat
+      IB_CLIENT_ID: 1
+      IB_POOL_SIZE: 3
+      MCP_SERVER_NAME: ib-paper
+    ports:
+      - "48012:8000"
+    depends_on:
+      - mcp-ib-gateway-paper
+    networks:
+      - mcp-ib-paper-net
+      - mcp-net
+      - traefik-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  mcp-ib-gateway-paper:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    container_name: mcp-ib-gateway-paper
+    restart: unless-stopped
+    env_file:
+      - $HOME/secrets/mcp-ib-paper.env
+    environment:
+      TWS_USERID: ${IB_USERNAME}
+      TWS_PASSWORD: ${IB_PASSWORD}
+      TRADING_MODE: paper
+      READ_ONLY_API: ${READ_ONLY_API:-no}
+      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
+      TWOFA_TIMEOUT_ACTION: restart
+    ports:
+      - "14001:4003"   # Live trading API via socat
+      - "14002:4004"   # Paper trading API via socat
+      - "15900:5900"   # VNC
+    volumes:
+      - ./jts:/root/Jts
+      - ./ibc:/root/ibc
+    networks:
+      mcp-ib-paper-net:
+        aliases:
+          - ibgateway-paper
+
+networks:
+  mcp-ib-paper-net:
+    name: mcp-ib-paper-net
+  mcp-net:
+    external: true
+  traefik-net:
+    external: true
