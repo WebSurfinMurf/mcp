@@ -12,12 +12,12 @@ echo "Gateway Ports: 14001 (live socat), 14002 (paper socat), 15900 (VNC)"
 echo ""
 
 # Load secrets
-if [ -f "$HOME/secrets/mcp-ib-paper.env" ]; then
+if [ -f "$HOME/projects/secrets/mcp-ib-paper.env" ]; then
     set -a
-    source "$HOME/secrets/mcp-ib-paper.env"
+    source "$HOME/projects/secrets/mcp-ib-paper.env"
     set +a
 else
-    echo "ERROR: Secrets file not found: $HOME/secrets/mcp-ib-paper.env"
+    echo "ERROR: Secrets file not found: $HOME/projects/secrets/mcp-ib-paper.env"
     exit 1
 fi
 

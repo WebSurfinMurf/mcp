@@ -8,7 +8,7 @@ services:
     container_name: mcp-ib-paper
     restart: unless-stopped
     env_file:
-      - $HOME/secrets/mcp-ib-paper.env
+      - $HOME/projects/secrets/mcp-ib-paper.env
     environment:
       IB_HOST: ibgateway-paper
       IB_PORT: 4004  # Paper trading via socat
@@ -34,7 +34,7 @@ services:
     container_name: mcp-ib-gateway-paper
     restart: unless-stopped
     env_file:
-      - $HOME/secrets/mcp-ib-paper.env
+      - $HOME/projects/secrets/mcp-ib-paper.env
     environment:
       TWS_USERID: ${IB_USERNAME}
       TWS_PASSWORD: ${IB_PASSWORD}

@@ -8,7 +8,7 @@ services:
     container_name: mcp-ib-live
     restart: unless-stopped
     env_file:
-      - $HOME/secrets/mcp-ib-live.env
+      - $HOME/projects/secrets/mcp-ib-live.env
     environment:
       IB_HOST: ibgateway-live
       # NOTE: Currently set to 4004 (paper) for testing
@@ -36,7 +36,7 @@ services:
     container_name: mcp-ib-gateway-live
     restart: unless-stopped
     env_file:
-      - $HOME/secrets/mcp-ib-live.env
+      - $HOME/projects/secrets/mcp-ib-live.env
     environment:
       TWS_USERID: ${IB_USERNAME}
       TWS_PASSWORD: ${IB_PASSWORD}

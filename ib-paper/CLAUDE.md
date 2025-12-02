@@ -20,7 +20,7 @@ MCP server for Interactive Brokers paper trading. Used by websurfinmurf/model en
 - **Client ID**: 1
 
 ## Secrets
-Location: `$HOME/secrets/mcp-ib-paper.env`
+Location: `$HOME/projects/secrets/mcp-ib-paper.env`
 
 ## Common Commands
 ```bash
