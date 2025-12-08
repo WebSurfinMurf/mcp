@@ -10,11 +10,13 @@ Enhanced with:
 - Circuit breaker pattern for failure management
 - Background health monitoring with auto-restart
 - Retry with exponential backoff
+- Gateway control (login/logout) for TWS session management
 """
 import os
 import json
 import asyncio
 import time
+import socket
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Union, List
 from contextlib import asynccontextmanager
@@ -33,6 +35,97 @@ IB_CLIENT_ID_BASE = int(os.getenv("IB_CLIENT_ID", "1"))
 POOL_SIZE = int(os.getenv("IB_POOL_SIZE", "3"))
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
+
+# Gateway control configuration
+# Uses Docker to control the gateway container
+GATEWAY_CONTAINER = os.getenv("GATEWAY_CONTAINER", "mcp-ib-gateway")
+DOCKER_SOCKET = "/var/run/docker.sock"
+
+
+async def docker_command(action: str, container: str = None) -> Dict[str, Any]:
+    """Execute a Docker command on the gateway container"""
+    import subprocess
+    container = container or GATEWAY_CONTAINER
+
+    try:
+        if action == "stop":
+            cmd = ["docker", "stop", container]
+        elif action == "start":
+            cmd = ["docker", "start", container]
+        elif action == "restart":
+            cmd = ["docker", "restart", container]
+        elif action == "status":
+            cmd = ["docker", "inspect", "-f", "{{.State.Status}}", container]
+        else:
+            return {"success": False, "error": f"Unknown action: {action}"}
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "action": action,
+                "container": container,
+                "output": result.stdout.strip()
+            }
+        else:
+            return {
+                "success": False,
+                "action": action,
+                "container": container,
+                "error": result.stderr.strip()
+            }
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": f"Docker {action} timed out"}
+    except FileNotFoundError:
+        return {"success": False, "error": "Docker not available in container"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def check_gateway_status() -> Dict[str, Any]:
+    """Check if gateway is logged in and responsive"""
+    # Check Docker container status
+    docker_status = await docker_command("status")
+    container_running = docker_status.get("output") == "running" if docker_status["success"] else False
+
+    # Try to connect to IB API port (4004 for paper via socat)
+    api_port_open = False
+    if container_running:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(IB_HOST, int(IB_PORT)),
+                timeout=3.0
+            )
+            writer.close()
+            await writer.wait_closed()
+            api_port_open = True
+        except:
+            pass
+
+    # Check if we can make actual IB calls
+    pool_stats = pool.get_stats() if pool else None
+    ib_connected = pool_stats["workers_ib_connected"] > 0 if pool_stats else False
+
+    # Determine overall gateway status
+    if ib_connected and api_port_open:
+        status = "connected"
+    elif api_port_open and not ib_connected:
+        status = "api_ready"  # Gateway up but workers not connected
+    elif container_running and not api_port_open:
+        status = "starting"  # Container running but API not ready
+    else:
+        status = "disconnected"
+
+    return {
+        "status": status,
+        "container_running": container_running,
+        "api_port_open": api_port_open,
+        "ib_connected": ib_connected,
+        "gateway_container": GATEWAY_CONTAINER,
+        "api_host": IB_HOST,
+        "api_port": IB_PORT
+    }
 
 
 @dataclass
@@ -97,16 +190,31 @@ class IBWorker:
     last_successful_call: float = 0
     consecutive_failures: int = 0
     ib_connected: bool = False
+    # Track restarts for backoff (don't reset on start)
+    restart_count: int = 0
+    last_restart_time: float = 0
 
     def __post_init__(self):
         self.lock = asyncio.Lock()
+
+    def should_restart(self) -> bool:
+        """Check if enough time has passed for backoff-based restart."""
+        if self.restart_count == 0:
+            return True
+        # Exponential backoff: 5s, 10s, 20s, 40s, max 60s
+        backoff = min(5 * (2 ** (self.restart_count - 1)), 60)
+        elapsed = time.time() - self.last_restart_time
+        return elapsed >= backoff
 
     async def start(self) -> bool:
         """Start the subprocess and initialize MCP protocol"""
         if self.process is not None and self.process.returncode is None:
             return True  # Already running
 
-        logger.info(f"Worker {self.worker_id}: Starting IB MCP (client_id={self.client_id})")
+        # Track restart for backoff
+        self.restart_count += 1
+        self.last_restart_time = time.time()
+        logger.info(f"Worker {self.worker_id}: Starting IB MCP (client_id={self.client_id}, restart #{self.restart_count})")
         try:
             self.process = await asyncio.create_subprocess_exec(
                 "python3", "-m", "ib_mcp.server",
@@ -144,7 +252,7 @@ class IBWorker:
             await self.process.stdin.drain()
 
             self.initialized = True
-            self.consecutive_failures = 0
+            # Don't reset consecutive_failures here - only reset when IB actually connects
             return True
 
         except Exception as e:
@@ -217,6 +325,9 @@ class IBWorker:
 
             self.ib_connected = True
             self.last_successful_call = time.time()
+            # Reset failure/restart counters on successful IB check
+            self.consecutive_failures = 0
+            self.restart_count = 0
             return True
 
         except asyncio.TimeoutError:
@@ -316,29 +427,92 @@ class IBWorkerPool:
         logger.info(f"Health monitor started (interval: {HEALTH_CHECK_INTERVAL}s)")
 
     async def _health_monitor(self) -> None:
-        """Background task to monitor worker health and restart if needed"""
+        """Background task to monitor worker health and auto-reconnect gateway if needed"""
+        consecutive_disconnects = 0
+
         while True:
             try:
                 await asyncio.sleep(HEALTH_CHECK_INTERVAL)
 
-                for worker in self.workers:
+                workers_connected = 0
+                workers_needing_restart = []
+
+                for i, worker in enumerate(self.workers):
+                    # Stagger checks to avoid IB connection storms
+                    if i > 0:
+                        await asyncio.sleep(2)
+
                     if worker.is_alive():
                         # Check actual IB connectivity
                         async with worker.lock:
                             connected = await worker.check_ib_connection()
-                            if not connected:
-                                logger.warning(f"Worker {worker.worker_id}: IB connection lost, restarting...")
-                                await worker.stop()
-                                # Worker will auto-restart on next request
+                            if connected:
+                                workers_connected += 1
+                            else:
+                                # Increment failure count but don't restart immediately
+                                worker.consecutive_failures += 1
+                                logger.warning(f"Worker {worker.worker_id}: IB check failed ({worker.consecutive_failures} consecutive)")
 
-                    # Log worker status
-                    if worker.consecutive_failures > 0:
-                        logger.warning(f"Worker {worker.worker_id}: {worker.consecutive_failures} consecutive failures")
+                                # Only restart after 2+ consecutive failures AND backoff elapsed
+                                if worker.consecutive_failures >= 2 and worker.should_restart():
+                                    workers_needing_restart.append(worker)
+                    else:
+                        # Worker not alive - check if we should restart with backoff
+                        if worker.should_restart():
+                            workers_needing_restart.append(worker)
+
+                    # Log persistent failures
+                    if worker.restart_count >= 3:
+                        logger.warning(f"Worker {worker.worker_id}: {worker.restart_count} restart attempts, backing off")
+
+                # Restart workers that need it (one at a time with delay)
+                for worker in workers_needing_restart:
+                    async with worker.lock:
+                        backoff = min(5 * (2 ** (worker.restart_count)), 60) if worker.restart_count > 0 else 5
+                        logger.info(f"Worker {worker.worker_id}: Restarting (attempt #{worker.restart_count + 1}, next backoff {backoff}s)")
+                        await worker.stop()
+                        # Small delay before restart to let IB settle
+                        await asyncio.sleep(3)
+
+                # Auto-reconnect gateway if all workers disconnected for 2+ checks
+                if workers_connected == 0:
+                    consecutive_disconnects += 1
+                    logger.warning(f"All workers disconnected ({consecutive_disconnects} consecutive checks)")
+
+                    if consecutive_disconnects >= 2:
+                        logger.info("Auto-reconnecting gateway after sustained disconnection...")
+                        await self._auto_reconnect_gateway()
+                        consecutive_disconnects = 0
+                        # Reset all worker restart counts after gateway reconnect
+                        for worker in self.workers:
+                            worker.restart_count = 0
+                            worker.consecutive_failures = 0
+                else:
+                    consecutive_disconnects = 0
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Health monitor error: {e}")
+
+    async def _auto_reconnect_gateway(self) -> None:
+        """Auto-reconnect the gateway container"""
+        try:
+            # Stop all workers first
+            for worker in self.workers:
+                async with worker.lock:
+                    await worker.stop()
+
+            # Restart gateway container
+            result = await docker_command("restart")
+            if result["success"]:
+                logger.info("Gateway restart initiated by health monitor")
+                # Wait for gateway to come up
+                await asyncio.sleep(30)
+            else:
+                logger.error(f"Gateway auto-restart failed: {result.get('error')}")
+        except Exception as e:
+            logger.error(f"Auto-reconnect error: {e}")
 
     @asynccontextmanager
     async def acquire(self):
@@ -378,6 +552,7 @@ class IBWorkerPool:
                     "initialized": w.initialized,
                     "ib_connected": w.ib_connected,
                     "consecutive_failures": w.consecutive_failures,
+                    "restart_count": w.restart_count,
                     "last_success_ago": int(time.time() - w.last_successful_call) if w.last_successful_call else None
                 }
                 for w in self.workers
@@ -556,6 +731,197 @@ async def restart_workers():
                 await worker.stop()
         return {"message": "All workers stopped. They will restart on next request."}
     return {"error": "Pool not initialized"}
+
+
+# ============================================================================
+# Gateway Control Endpoints
+# ============================================================================
+
+@app.get("/gateway/status")
+async def gateway_status():
+    """
+    Get IB Gateway connection status.
+
+    Returns:
+        status: "connected", "api_ready", "starting", or "disconnected"
+        api_port_open: Whether the IB API port is accepting connections
+        ibc_responsive: Whether the IBC command server is responding
+        ib_connected: Whether workers have active IB connections
+    """
+    return await check_gateway_status()
+
+
+@app.post("/gateway/logout")
+async def gateway_logout():
+    """
+    Logout from IB Gateway by stopping the gateway container.
+
+    This frees up the IB session so you can use TWS on another machine.
+    To login again, use POST /gateway/login
+    """
+    logger.info("Gateway logout requested")
+
+    # First stop all workers
+    if pool:
+        for worker in pool.workers:
+            async with worker.lock:
+                await worker.stop()
+        logger.info("All workers stopped")
+
+    # Stop the gateway container
+    result = await docker_command("stop")
+
+    if result["success"]:
+        logger.info("Gateway container stopped")
+        return {
+            "success": True,
+            "message": "Gateway stopped. IB session is now free for TWS.",
+            "note": "Use POST /gateway/login to restart the gateway when ready."
+        }
+    else:
+        logger.error(f"Failed to stop gateway: {result['error']}")
+        return {
+            "success": False,
+            "message": "Failed to stop gateway container",
+            "error": result.get("error")
+        }
+
+
+@app.post("/gateway/login")
+async def gateway_login():
+    """
+    Login to IB Gateway by starting/restarting the gateway container.
+
+    This will start the gateway and it will auto-authenticate with saved credentials.
+    """
+    logger.info("Gateway login requested")
+
+    # Check current status
+    status = await check_gateway_status()
+
+    if status["status"] == "connected":
+        return {
+            "success": True,
+            "message": "Gateway is already connected",
+            "status": status
+        }
+
+    # Start or restart the gateway container
+    if status["container_running"]:
+        logger.info("Container running but not connected, restarting")
+        result = await docker_command("restart")
+    else:
+        logger.info("Container not running, starting")
+        result = await docker_command("start")
+
+    if result["success"]:
+        # Stop workers so they reconnect fresh
+        if pool:
+            for worker in pool.workers:
+                async with worker.lock:
+                    await worker.stop()
+
+        return {
+            "success": True,
+            "message": "Gateway started. Authentication in progress.",
+            "note": "Wait 30-60 seconds for gateway to authenticate, then check /gateway/status"
+        }
+    else:
+        return {
+            "success": False,
+            "message": "Failed to start gateway container",
+            "error": result.get("error")
+        }
+
+
+@app.post("/gateway/reconnect")
+async def gateway_reconnect():
+    """
+    Force reconnection by restarting the gateway container.
+
+    Useful when connection is stale or having issues.
+    """
+    logger.info("Gateway reconnect requested")
+
+    # Stop all workers first
+    if pool:
+        for worker in pool.workers:
+            async with worker.lock:
+                await worker.stop()
+
+    # Restart the gateway container
+    result = await docker_command("restart")
+
+    return {
+        "success": result["success"],
+        "message": "Gateway restart initiated. Workers stopped.",
+        "note": "Wait 30-60 seconds for gateway to reconnect, then check /gateway/status",
+        "docker_result": result
+    }
+
+
+@app.post("/gateway/ensure-ready")
+async def gateway_ensure_ready(timeout: int = 90):
+    """
+    Ensure gateway is connected before making requests.
+
+    - Returns immediately (200) if already connected
+    - Auto-reconnects and waits if disconnected
+    - Returns error (503) if reconnect fails within timeout
+
+    Use this before making IB API calls to ensure connection is ready.
+    Client code example:
+        requests.post("http://localhost:48012/gateway/ensure-ready", timeout=90)
+        response = requests.post("http://localhost:48012/mcp", json={...})
+    """
+    # Quick check - if already connected, return immediately
+    status = await check_gateway_status()
+    if status["status"] == "connected":
+        return {
+            "ready": True,
+            "message": "Gateway already connected",
+            "waited": 0
+        }
+
+    logger.info("Gateway not ready, triggering reconnect...")
+
+    # Not connected - trigger reconnect
+    if pool:
+        for worker in pool.workers:
+            async with worker.lock:
+                await worker.stop()
+
+    # Start or restart gateway
+    if status["container_running"]:
+        await docker_command("restart")
+    else:
+        await docker_command("start")
+
+    # Wait for connection with timeout
+    start_time = time.time()
+    max_wait = min(timeout, 120)  # Cap at 2 minutes
+
+    while time.time() - start_time < max_wait:
+        await asyncio.sleep(2)  # Check every 2 seconds
+        status = await check_gateway_status()
+        if status["status"] == "connected":
+            waited = int(time.time() - start_time)
+            logger.info(f"Gateway ready after {waited}s")
+            return {
+                "ready": True,
+                "message": f"Gateway connected after {waited}s",
+                "waited": waited
+            }
+
+    # Timeout - still not connected
+    waited = int(time.time() - start_time)
+    logger.error(f"Gateway not ready after {waited}s")
+    return {
+        "ready": False,
+        "message": f"Gateway failed to connect within {waited}s",
+        "waited": waited,
+        "status": await check_gateway_status()
+    }
 
 
 if __name__ == "__main__":

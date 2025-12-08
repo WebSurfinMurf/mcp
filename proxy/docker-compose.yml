@@ -11,6 +11,7 @@ services:
       - ./config.json:/config/config.json:ro
       - ./wrappers:/wrappers:ro
       - /home/administrator/projects:/workspace:ro
+      - /home/administrator/projects/nginx/sites/generated-images:/generated-images
       - mcp-memory-data:/app/dist
     networks:
       - mcp-net
@@ -18,6 +19,7 @@ services:
       - minio-net
       - n8n-net
       - arangodb-net
+      - tradingview-net
     command: ["-config", "/config/config.json"]
     healthcheck:
       test: ["CMD", "/bin/sh", "-c", "test -f /config/config.json"]
@@ -35,6 +37,8 @@ networks:
   n8n-net:
     external: true
   arangodb-net:
+    external: true
+  tradingview-net:
     external: true
 
 volumes:

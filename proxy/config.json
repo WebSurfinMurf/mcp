@@ -55,6 +55,19 @@
     "openmemory": {
       "command": "/wrappers/openmemory-wrapper.sh",
       "args": []
+    },
+    "tradingview": {
+      "command": "/wrappers/tradingview-wrapper.sh",
+      "args": []
+    },
+    "gemini-image": {
+      "command": "npx",
+      "args": ["-y", "mcp-image"],
+      "env": {
+        "NODE_NO_WARNINGS": "1",
+        "GEMINI_API_KEY": "AIzaSyDp-7ORqJTyWl_5DL9lXwh-TmtltDE9DD0",
+        "IMAGE_OUTPUT_DIR": "/generated-images"
+      }
     }
   }
 }
