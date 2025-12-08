@@ -230,6 +230,90 @@ class MCPTools:
         except Exception as e:
             return {"error": str(e), "success": False}
 
+    @staticmethod
+    async def get_cookies(url: str, cookie_names: List[str] = None) -> Dict[str, Any]:
+        """Get cookies from a web page after navigation"""
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context()
+                page = await context.new_page()
+
+                await page.goto(url, wait_until="networkidle")
+
+                # Get all cookies for this context
+                cookies = await context.cookies()
+
+                await browser.close()
+
+                # Filter cookies if specific names requested
+                if cookie_names:
+                    cookies = [c for c in cookies if c.get("name") in cookie_names]
+
+                return {
+                    "url": url,
+                    "cookies": cookies,
+                    "cookie_count": len(cookies),
+                    "success": True
+                }
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
+    @staticmethod
+    async def interactive_login(url: str, wait_for_url_contains: str = None,
+                                 timeout_seconds: int = 120, cookie_names: List[str] = None) -> Dict[str, Any]:
+        """Open a VISIBLE browser for manual login, then extract cookies.
+
+        This is useful for OAuth flows where automation is blocked.
+        User logs in manually, and cookies are captured after redirect.
+        """
+        try:
+            async with async_playwright() as p:
+                # Launch VISIBLE browser (not headless)
+                browser = await p.chromium.launch(headless=False)
+                context = await browser.new_context()
+                page = await context.new_page()
+
+                await page.goto(url)
+
+                # Wait for user to complete login
+                if wait_for_url_contains:
+                    # Wait until URL contains expected string (indicates successful login)
+                    try:
+                        await page.wait_for_url(f"**/*{wait_for_url_contains}*", timeout=timeout_seconds * 1000)
+                    except Exception:
+                        pass  # Timeout is okay, user might still be logged in
+
+                # Give user extra time to complete any 2FA
+                await page.wait_for_timeout(3000)
+
+                # Get cookies
+                cookies = await context.cookies()
+
+                # Get final page info
+                title = await page.title()
+                final_url = page.url
+
+                await browser.close()
+
+                # Filter cookies if specific names requested
+                if cookie_names:
+                    filtered_cookies = [c for c in cookies if c.get("name") in cookie_names]
+                else:
+                    filtered_cookies = cookies
+
+                return {
+                    "initial_url": url,
+                    "final_url": final_url,
+                    "title": title,
+                    "cookies": filtered_cookies,
+                    "cookie_count": len(filtered_cookies),
+                    "all_cookie_names": [c.get("name") for c in cookies],
+                    "success": True
+                }
+        except Exception as e:
+            return {"error": str(e), "success": False}
+
 async def handle_mcp_request(request: MCPRequest) -> MCPResponse:
     """Handle MCP method calls"""
 

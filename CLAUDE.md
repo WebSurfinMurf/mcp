@@ -4,8 +4,10 @@
 Complete Model Context Protocol (MCP) integration providing 67+ tools across 10 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
 **Quick Stats:**
-- **MCP Servers**: 10 active (filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb, openmemory)
-- **Total Tools**: 67 tools available
+- **MCP Servers**: 12 configured (10 currently active)
+- **Active Servers**: filesystem, postgres, playwright, minio, n8n, arangodb, openmemory, tradingview, gemini-image
+- **Inactive Servers**: memory, timescaledb, ib (containers not running)
+- **Total Tools**: 66 active tools (84+ when all servers running)
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 - **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
@@ -128,6 +130,29 @@ Individual MCP Servers (7 services)
 - Integration: `/cmemory` slash command uses these tools
 - Documentation: `/home/administrator/projects/mcp/openmemory/CLAUDE.md`
 
+### 🖼️ Gemini Image (1 tool) - ✅ DEPLOYED
+- AI image generation using Google Gemini (Nano Banana Pro)
+- Tools: generate_image (text-to-image, image editing)
+- Model: gemini-3-pro-image-preview
+- Package: `mcp-image` v0.1.1 by shinpr (npm)
+- Integration: Via MCP Proxy (npx stdio transport)
+- Output: `/home/administrator/projects/nginx/sites/generated-images/`
+- Web URL: `https://nginx.ai-servicers.com/generated-images/`
+- Status: Fully operational (deployed 2025-12-07)
+- Use Cases: Generate culturally-accurate images, custom imagery stock photos can't provide
+
+### 📊 TradingView (8 tools) - ✅ DEPLOYED
+- Real-time market data, technical analysis, and trading signals
+- Tools: get_quote, get_indicators, get_recommendation, get_price_history, list_tracked_symbols, list_alerts, compare_symbols, market_overview
+- Connection: tradingview-api:8000
+- Backend: TradingView-TA library with TimescaleDB time-series storage
+- Container: tradingview-api (port 8000)
+- Networks: tradingview-net, mcp-net
+- Architecture: FastAPI HTTP wrapper with MCP endpoint
+- Status: Fully operational (deployed 2025-12-06)
+- Features: Real-time prices, RSI/MACD/SMA indicators, Buy/Sell/Neutral recommendations
+- Documentation: `/home/administrator/projects/tradingview/CLAUDE.md`
+
 ---
 
 ## Open WebUI Integration
@@ -219,7 +244,7 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 
 ### Example Queries
 ```
-"list tools" → Shows all 63 MCP tools organized by server
+"list tools" → Shows all 66 MCP tools organized by server
 "list postgres databases" → Calls mcp_postgres_execute_sql
 "read the config file" → Calls mcp_filesystem_read_file
 "take screenshot of example.com" → Calls mcp_playwright_navigate + screenshot
@@ -230,6 +255,9 @@ docker exec open-webui curl http://mcp-middleware:8080/health
 "list collections in ArangoDB" → Calls mcp_arangodb_list_collections
 "query the ai_memory database" → Calls mcp_arangodb_query
 "insert document into ArangoDB" → Calls mcp_arangodb_insert
+"generate image of Irish flat cap" → Calls mcp_gemini-image_generate_image
+"get TSLA technical indicators" → Calls mcp_tradingview_get_indicators
+"what's the trading recommendation for NVDA?" → Calls mcp_tradingview_get_recommendation
 ```
 
 ### From Kilo Code (VS Code Extension)
@@ -271,6 +299,18 @@ docker exec open-webui curl http://mcp-middleware:8080/health
     "arangodb": {
       "type": "streamable-http",
       "url": "http://linuxserver.lan:9090/arangodb/mcp"
+    },
+    "openmemory": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/openmemory/mcp"
+    },
+    "tradingview": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/tradingview/mcp"
+    },
+    "gemini-image": {
+      "type": "streamable-http",
+      "url": "http://linuxserver.lan:9090/gemini-image/mcp"
     }
   }
 }
@@ -336,13 +376,15 @@ docker logs litellm -f
 
 ### Tool Selection Priority
 1. **Database** → postgres or timescaledb
-2. **AI Memory/Context** → arangodb (multi-model database)
+2. **AI Memory/Context** → arangodb (multi-model database) or openmemory (semantic search)
 3. **Files** → filesystem
 4. **Web** → playwright
 5. **Storage** → minio
 6. **Automation** → n8n
 7. **Memory** → memory (legacy KG store)
-8. **Market Data** → ib (Interactive Brokers)
+8. **Market Data (live)** → ib (Interactive Brokers - paper trading)
+9. **Market Data (real-time)** → tradingview (technical analysis, indicators)
+10. **Image Generation** → gemini-image (AI-generated images)
 
 ### Security Notes
 - All MCP servers run in isolated Docker networks
@@ -429,5 +471,5 @@ docker logs litellm -f
 
 ---
 
-**Project Status**: ✅ Production (9 servers, 63 tools, automatic execution)
-**Last Updated**: 2025-11-01 (Playwright replaced Puppeteer - 6 tools vs 7)
+**Project Status**: ✅ Production (12 servers, 72+ tools, automatic execution)
+**Last Updated**: 2025-12-07 (Added gemini-image for AI image generation)

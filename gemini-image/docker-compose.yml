@@ -1,0 +1,19 @@
+services:
+  mcp-gemini-image:
+    build: .
+    container_name: mcp-gemini-image
+    restart: unless-stopped
+    ports:
+      - "48014:8000"
+    env_file:
+      - /home/administrator/secrets/gemini-image.env
+    environment:
+      - OUTPUT_DIR=/workspace/generated-images
+    volumes:
+      - /home/administrator/projects/nginx/sites/generated-images:/workspace/generated-images
+    networks:
+      - mcp-net
+
+networks:
+  mcp-net:
+    external: true
