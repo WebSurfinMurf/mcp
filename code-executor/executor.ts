@@ -30,6 +30,26 @@ interface ExecuteRequest {
   language?: 'typescript' | 'python';
 }
 
+interface SwarmDispatchRequest {
+  prompt: string;
+  target: 'gemini' | 'codex' | 'claude';
+  timeout?: number;
+  working_dir?: string;
+}
+
+interface SwarmResponse {
+  success: boolean;
+  result?: string;
+  error?: string;
+  metrics?: Record<string, any>;
+}
+
+const SWARM_NODES: Record<string, string> = {
+  gemini: 'http://swarm-gemini:8080',
+  codex: 'http://swarm-codex:8080',
+  claude: 'http://swarm-claude:8080',
+};
+
 interface ExecuteResponse {
   output: string;
   error?: string;
@@ -492,6 +512,114 @@ fastify.get<{
   return {
     tool: info,
     tokenEstimate: detail === 'full' ? estimateTokens(info.source || '') : estimateTokens(info.description || '')
+  };
+});
+
+/**
+ * POST /swarm/dispatch - Dispatch prompt to AI swarm node
+ */
+fastify.post<{ Body: SwarmDispatchRequest }>('/swarm/dispatch', async (request, reply) => {
+  const { prompt, target, timeout = 300, working_dir = '/workspace' } = request.body;
+
+  // Validation
+  if (!prompt || typeof prompt !== 'string') {
+    return reply.code(400).send({ error: 'Prompt is required and must be a string' });
+  }
+
+  if (!target || !SWARM_NODES[target]) {
+    return reply.code(400).send({
+      error: `Invalid target. Valid targets: ${Object.keys(SWARM_NODES).join(', ')}`
+    });
+  }
+
+  const nodeUrl = SWARM_NODES[target];
+
+  fastify.log.info({
+    target,
+    promptLength: prompt.length,
+    timeout,
+    preview: prompt.substring(0, 100)
+  }, 'Dispatching to swarm node');
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout * 1000 + 5000); // Add 5s buffer
+
+    const response = await fetch(`${nodeUrl}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, timeout, working_dir }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      fastify.log.error({ target, status: response.status, error: errorText }, 'Swarm node returned error');
+      return reply.code(response.status).send({
+        success: false,
+        error: `Swarm node returned ${response.status}: ${errorText}`
+      });
+    }
+
+    const result: SwarmResponse = await response.json();
+
+    fastify.log.info({
+      target,
+      success: result.success,
+      hasResult: !!result.result,
+      hasError: !!result.error
+    }, 'Swarm dispatch completed');
+
+    return result;
+
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      fastify.log.error({ target, timeout }, 'Swarm dispatch timed out');
+      return reply.code(504).send({
+        success: false,
+        error: `Request to ${target} timed out after ${timeout}s`
+      });
+    }
+
+    fastify.log.error({ target, error: error.message }, 'Swarm dispatch failed');
+    return reply.code(500).send({
+      success: false,
+      error: `Failed to reach ${target}: ${error.message}`
+    });
+  }
+});
+
+/**
+ * GET /swarm/health - Check health of all swarm nodes
+ */
+fastify.get('/swarm/health', async () => {
+  const results: Record<string, { status: string; node_type?: string; error?: string }> = {};
+
+  for (const [name, url] of Object.entries(SWARM_NODES)) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${url}/health`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        results[name] = { status: 'healthy', node_type: data.node_type };
+      } else {
+        results[name] = { status: 'unhealthy', error: `HTTP ${response.status}` };
+      }
+    } catch (error: any) {
+      results[name] = { status: 'unreachable', error: error.message };
+    }
+  }
+
+  return {
+    swarm: results,
+    healthyNodes: Object.values(results).filter(r => r.status === 'healthy').length,
+    totalNodes: Object.keys(SWARM_NODES).length
   };
 });
 
