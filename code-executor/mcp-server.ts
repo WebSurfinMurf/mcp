@@ -33,6 +33,12 @@ interface GetToolInfoArgs {
   detail?: 'name' | 'description' | 'full';
 }
 
+interface SwarmDispatchArgs {
+  prompt: string;
+  target: 'gemini' | 'codex' | 'claude';
+  timeout?: number;
+}
+
 const server = new Server(
   {
     name: 'code-executor',
@@ -118,6 +124,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'list_mcp_tools',
         description: 'List all available MCP tools across all servers. Returns tool names and servers for discovery.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'dispatch_to_swarm',
+        description: 'Dispatch a prompt to an AI swarm node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with access to the /workspace directory. Use this to delegate tasks to other AI agents.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            prompt: {
+              type: 'string',
+              description: 'The prompt/task to send to the swarm node',
+            },
+            target: {
+              type: 'string',
+              enum: ['gemini', 'codex', 'claude'],
+              description: 'Target AI: gemini (Google), codex (OpenAI), or claude (Anthropic)',
+            },
+            timeout: {
+              type: 'number',
+              description: 'Timeout in seconds (default: 900 = 15 minutes)',
+              default: 900,
+            },
+          },
+          required: ['prompt', 'target'],
+        },
+      },
+      {
+        name: 'swarm_health',
+        description: 'Check health status of all AI swarm nodes (Gemini, Codex, Claude).',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -222,6 +260,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 totalTools: health.totalTools,
                 toolsByServer: health.toolsByServer,
               }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'dispatch_to_swarm': {
+        const { prompt, target, timeout = 900 } = args as SwarmDispatchArgs;
+
+        const response = await fetch(`${API_URL}/swarm/dispatch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, target, timeout }),
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Swarm dispatch to ${target} failed: ${result.error}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                target,
+                success: result.success,
+                result: result.result,
+                metrics: result.metrics,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'swarm_health': {
+        const response = await fetch(`${API_URL}/swarm/health`);
+        const health = await response.json();
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(health, null, 2),
             },
           ],
         };
