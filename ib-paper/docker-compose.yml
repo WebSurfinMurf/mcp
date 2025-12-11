@@ -39,13 +39,7 @@ services:
     env_file:
       - $HOME/projects/secrets/mcp-ib-paper.env
     environment:
-      TWS_USERID: ${IB_USERNAME}
-      TWS_PASSWORD: ${IB_PASSWORD}
-      TRADING_MODE: paper
-      READ_ONLY_API: ${READ_ONLY_API:-no}
-      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
-      TWOFA_TIMEOUT_ACTION: restart
-      TWS_API_PORT: 4002
+      # TWS_USERID and TWS_PASSWORD come from env_file
       API_PORT: 4002        # Port IB Gateway actually listens on (must match UI)
       SOCAT_PORT: 4004      # Port socat listens on (exposed)
     ports:

@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 RUN pip install --no-cache-dir \
     ib-mcp \
-    ib-insync \
+    ib-async \
     fastmcp \
     fastapi \
     uvicorn[standard] \
