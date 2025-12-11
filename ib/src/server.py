@@ -11,6 +11,7 @@ Enhanced with:
 - Background health monitoring with auto-restart
 - Retry with exponential backoff
 - Gateway control (login/logout) for TWS session management
+- Direct ib_async connection for options data (reqSecDefOptParams)
 """
 import os
 import json
@@ -23,6 +24,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 import logging
+import ib_async as ib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,10 +38,352 @@ POOL_SIZE = int(os.getenv("IB_POOL_SIZE", "3"))
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))
 
+# Options-specific configuration (longer timeouts for options data)
+OPTIONS_TIMEOUT = int(os.getenv("OPTIONS_TIMEOUT", "120"))  # 2 minutes for options chains
+OPTIONS_CLIENT_ID = int(os.getenv("OPTIONS_CLIENT_ID", "99"))  # Dedicated client ID for options
+
 # Gateway control configuration
 # Uses Docker to control the gateway container
 GATEWAY_CONTAINER = os.getenv("GATEWAY_CONTAINER", "mcp-ib-gateway")
 DOCKER_SOCKET = "/var/run/docker.sock"
+
+
+# ============================================================================
+# Direct ib_async Options Client
+# Uses reqSecDefOptParams for proper options chain data (no throttling)
+# ============================================================================
+
+class OptionsClient:
+    """
+    Dedicated IB client for options data using ib_async directly.
+    Uses reqSecDefOptParams which doesn't have the throttling limitations
+    of reqContractDetails for options.
+    """
+
+    def __init__(self, host: str, port: int, client_id: int):
+        self.host = host
+        self.port = port
+        self.client_id = client_id
+        self._ib: Optional[ib.IB] = None
+        self._lock = asyncio.Lock()
+        self._connected = False
+
+    async def connect(self) -> bool:
+        """Connect to IB Gateway"""
+        async with self._lock:
+            if self._connected and self._ib and self._ib.isConnected():
+                return True
+
+            try:
+                self._ib = ib.IB()
+                await self._ib.connectAsync(
+                    self.host,
+                    self.port,
+                    clientId=self.client_id,
+                    readonly=True,
+                    timeout=30
+                )
+                self._connected = True
+                logger.info(f"Options client connected to IB at {self.host}:{self.port}")
+                return True
+            except Exception as e:
+                logger.error(f"Options client failed to connect: {e}")
+                self._connected = False
+                return False
+
+    async def disconnect(self):
+        """Disconnect from IB Gateway"""
+        async with self._lock:
+            if self._ib:
+                self._ib.disconnect()
+                self._connected = False
+                logger.info("Options client disconnected")
+
+    async def ensure_connected(self) -> bool:
+        """Ensure connection is active, reconnect if needed"""
+        if not self._connected or not self._ib or not self._ib.isConnected():
+            return await self.connect()
+        return True
+
+    async def get_stock_contract(self, symbol: str) -> Optional[ib.Stock]:
+        """Get qualified stock contract"""
+        if not await self.ensure_connected():
+            return None
+
+        try:
+            stock = ib.Stock(symbol.upper(), "SMART", "USD")
+            contracts = await asyncio.wait_for(
+                self._ib.qualifyContractsAsync(stock),
+                timeout=30
+            )
+            if contracts:
+                return contracts[0] if isinstance(contracts[0], ib.Contract) else None
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get stock contract for {symbol}: {e}")
+            return None
+
+    async def get_stock_price(self, symbol: str) -> Optional[float]:
+        """Get current stock price using market data snapshot"""
+        if not await self.ensure_connected():
+            return None
+
+        try:
+            stock = await self.get_stock_contract(symbol)
+            if not stock:
+                return None
+
+            # Request market data type 4 = delayed frozen data (available without subscription)
+            self._ib.reqMarketDataType(4)
+
+            # Request ticker
+            ticker = self._ib.reqMktData(stock, '', False, False)
+            await asyncio.sleep(2)  # Wait for data
+
+            # Cancel market data
+            self._ib.cancelMktData(stock)
+
+            # Get price (try last, then close, then bid/ask midpoint)
+            price = ticker.last
+            if not price or price <= 0:
+                price = ticker.close
+            if not price or price <= 0:
+                if ticker.bid and ticker.ask and ticker.bid > 0 and ticker.ask > 0:
+                    price = (ticker.bid + ticker.ask) / 2
+
+            return float(price) if price and price > 0 else None
+        except Exception as e:
+            logger.error(f"Failed to get price for {symbol}: {e}")
+            return None
+
+    async def get_option_expirations(self, symbol: str) -> List[str]:
+        """
+        Get available option expiration dates using reqSecDefOptParams.
+        This is the proper way to get options data - no throttling.
+
+        Returns list of expiration dates in YYYYMMDD format.
+        """
+        if not await self.ensure_connected():
+            return []
+
+        try:
+            stock = await self.get_stock_contract(symbol)
+            if not stock:
+                logger.error(f"Could not qualify stock contract for {symbol}")
+                return []
+
+            logger.info(f"Requesting option params for {symbol} (conId={stock.conId})")
+
+            # Use reqSecDefOptParams - this is the proper way to get options chain params
+            # It returns expirations and strikes without throttling
+            chains = await asyncio.wait_for(
+                self._ib.reqSecDefOptParamsAsync(
+                    underlyingSymbol=stock.symbol,
+                    futFopExchange="",  # Empty for stocks
+                    underlyingSecType=stock.secType,
+                    underlyingConId=stock.conId
+                ),
+                timeout=OPTIONS_TIMEOUT
+            )
+
+            if not chains:
+                logger.warning(f"No option chains returned for {symbol}")
+                return []
+
+            # Get the SMART exchange chain (most liquid)
+            smart_chain = next((c for c in chains if c.exchange == "SMART"), None)
+            if not smart_chain:
+                # Fall back to first available
+                smart_chain = chains[0]
+
+            expirations = sorted(list(smart_chain.expirations))
+            logger.info(f"Found {len(expirations)} expirations for {symbol}")
+            return expirations
+
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout getting option expirations for {symbol}")
+            return []
+        except Exception as e:
+            logger.error(f"Failed to get option expirations for {symbol}: {e}")
+            return []
+
+    async def get_option_chain(
+        self,
+        symbol: str,
+        expiration: str,
+        strikes_range: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Get options chain with market data for a specific expiration.
+
+        Args:
+            symbol: Stock symbol
+            expiration: Expiration date in YYYYMMDD format
+            strikes_range: Number of strikes on each side of ATM
+
+        Returns dict with underlying_price, calls, puts
+        """
+        if not await self.ensure_connected():
+            return {"error": "Not connected to IB"}
+
+        try:
+            stock = await self.get_stock_contract(symbol)
+            if not stock:
+                return {"error": f"Could not qualify stock contract for {symbol}"}
+
+            # Get current price
+            underlying_price = await self.get_stock_price(symbol)
+            if not underlying_price:
+                logger.warning(f"Could not get underlying price for {symbol}, using last close")
+
+            # Get option chain parameters
+            chains = await asyncio.wait_for(
+                self._ib.reqSecDefOptParamsAsync(
+                    underlyingSymbol=stock.symbol,
+                    futFopExchange="",
+                    underlyingSecType=stock.secType,
+                    underlyingConId=stock.conId
+                ),
+                timeout=OPTIONS_TIMEOUT
+            )
+
+            if not chains:
+                return {"error": f"No option chains found for {symbol}"}
+
+            # Get SMART exchange chain
+            chain = next((c for c in chains if c.exchange == "SMART"), chains[0])
+
+            # Verify expiration exists
+            if expiration not in chain.expirations:
+                return {"error": f"Expiration {expiration} not found for {symbol}"}
+
+            # Filter strikes around ATM
+            all_strikes = sorted(chain.strikes)
+            if underlying_price:
+                # Find ATM strike
+                atm_idx = min(range(len(all_strikes)),
+                             key=lambda i: abs(all_strikes[i] - underlying_price))
+                start_idx = max(0, atm_idx - strikes_range)
+                end_idx = min(len(all_strikes), atm_idx + strikes_range + 1)
+                strikes = all_strikes[start_idx:end_idx]
+            else:
+                # Take middle strikes if no price
+                mid = len(all_strikes) // 2
+                strikes = all_strikes[max(0, mid-strikes_range):mid+strikes_range+1]
+
+            logger.info(f"Getting {len(strikes)} strikes for {symbol} {expiration}")
+
+            # Create option contracts
+            calls = []
+            puts = []
+
+            # Request market data type 4 = delayed frozen data
+            self._ib.reqMarketDataType(4)
+
+            # Build call and put contracts
+            call_contracts = [
+                ib.Option(symbol, expiration, strike, "C", "SMART", tradingClass=chain.tradingClass)
+                for strike in strikes
+            ]
+            put_contracts = [
+                ib.Option(symbol, expiration, strike, "P", "SMART", tradingClass=chain.tradingClass)
+                for strike in strikes
+            ]
+
+            # Qualify contracts in batches to avoid pacing violations
+            all_contracts = call_contracts + put_contracts
+            qualified = []
+            batch_size = 50
+
+            for i in range(0, len(all_contracts), batch_size):
+                batch = all_contracts[i:i+batch_size]
+                try:
+                    batch_qualified = await asyncio.wait_for(
+                        self._ib.qualifyContractsAsync(*batch),
+                        timeout=30
+                    )
+                    qualified.extend([c for c in batch_qualified if c])
+                    await asyncio.sleep(0.5)  # Respect pacing
+                except Exception as e:
+                    logger.warning(f"Batch qualification failed: {e}")
+
+            if not qualified:
+                return {
+                    "symbol": symbol,
+                    "expiration": expiration,
+                    "underlying_price": underlying_price,
+                    "calls": [],
+                    "puts": [],
+                    "note": "No contracts qualified - may need market data subscription"
+                }
+
+            # Request tickers for all qualified contracts
+            tickers = []
+            for contract in qualified:
+                try:
+                    ticker = self._ib.reqMktData(contract, '', False, False)
+                    tickers.append((contract, ticker))
+                except Exception as e:
+                    logger.debug(f"Failed to request ticker for {contract}: {e}")
+
+            # Wait for data
+            await asyncio.sleep(3)
+
+            # Process tickers
+            for contract, ticker in tickers:
+                contract_data = {
+                    "strike": contract.strike,
+                    "bid": ticker.bid if ticker.bid and ticker.bid > 0 else None,
+                    "ask": ticker.ask if ticker.ask and ticker.ask > 0 else None,
+                    "last": ticker.last if ticker.last and ticker.last > 0 else None,
+                    "volume": ticker.volume if ticker.volume else None,
+                    "open_interest": None,  # Requires separate request
+                    "iv": None,  # Will be calculated
+                    "greeks": None
+                }
+
+                # Add Greeks if available
+                if ticker.modelGreeks:
+                    contract_data["greeks"] = {
+                        "delta": ticker.modelGreeks.delta,
+                        "gamma": ticker.modelGreeks.gamma,
+                        "theta": ticker.modelGreeks.theta,
+                        "vega": ticker.modelGreeks.vega,
+                        "iv": ticker.modelGreeks.impliedVol
+                    }
+                    contract_data["iv"] = ticker.modelGreeks.impliedVol
+
+                if contract.right == "C":
+                    calls.append(contract_data)
+                else:
+                    puts.append(contract_data)
+
+                # Cancel market data
+                self._ib.cancelMktData(contract)
+
+            # Sort by strike
+            calls.sort(key=lambda x: x["strike"])
+            puts.sort(key=lambda x: x["strike"])
+
+            return {
+                "symbol": symbol,
+                "expiration": expiration,
+                "underlying_price": underlying_price,
+                "calls": calls,
+                "puts": puts,
+                "trading_class": chain.tradingClass,
+                "multiplier": chain.multiplier
+            }
+
+        except asyncio.TimeoutError:
+            return {"error": f"Timeout getting option chain for {symbol}"}
+        except Exception as e:
+            logger.error(f"Failed to get option chain for {symbol}: {e}")
+            return {"error": str(e)}
+
+
+# Global options client instance
+options_client: Optional[OptionsClient] = None
 
 
 async def docker_command(action: str, container: str = None) -> Dict[str, Any]:
@@ -474,10 +818,18 @@ class IBWorkerPool:
                         # Small delay before restart to let IB settle
                         await asyncio.sleep(3)
 
-                # Auto-reconnect gateway if all workers disconnected for 2+ checks
-                if workers_connected == 0:
+                # Auto-reconnect gateway only if BOTH workers AND options_client are disconnected
+                # This prevents unnecessary gateway restarts when options_client is working fine
+                options_client_ok = (
+                    options_client is not None and
+                    options_client._connected and
+                    options_client._ib is not None and
+                    options_client._ib.isConnected()
+                )
+
+                if workers_connected == 0 and not options_client_ok:
                     consecutive_disconnects += 1
-                    logger.warning(f"All workers disconnected ({consecutive_disconnects} consecutive checks)")
+                    logger.warning(f"All IB connections lost ({consecutive_disconnects} consecutive checks)")
 
                     if consecutive_disconnects >= 2:
                         logger.info("Auto-reconnecting gateway after sustained disconnection...")
@@ -487,7 +839,14 @@ class IBWorkerPool:
                         for worker in self.workers:
                             worker.restart_count = 0
                             worker.consecutive_failures = 0
-                else:
+                        # Try to reconnect options_client
+                        if options_client:
+                            try:
+                                await options_client.connect()
+                            except Exception as e:
+                                logger.warning(f"Options client reconnect failed: {e}")
+                elif workers_connected > 0 or options_client_ok:
+                    # At least one connection type is working, reset counter
                     consecutive_disconnects = 0
 
             except asyncio.CancelledError:
@@ -663,18 +1022,34 @@ async def send_to_ib_mcp(request_data: Dict[str, Any]) -> Dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
-    global pool
+    global pool, options_client
     logger.info(f"Starting MCP IB Server with {POOL_SIZE} workers")
     logger.info(f"Connecting to {IB_HOST}:{IB_PORT}, base client_id={IB_CLIENT_ID_BASE}")
     logger.info(f"Health check interval: {HEALTH_CHECK_INTERVAL}s, Max retries: {MAX_RETRIES}")
+    logger.info(f"Options timeout: {OPTIONS_TIMEOUT}s, Options client_id: {OPTIONS_CLIENT_ID}")
 
+    # Initialize MCP worker pool
     pool = IBWorkerPool(size=POOL_SIZE, base_client_id=IB_CLIENT_ID_BASE)
     await pool.initialize()
     await pool.start_health_monitor()
 
+    # Initialize dedicated options client (uses ib_async directly for reqSecDefOptParams)
+    options_client = OptionsClient(
+        host=IB_HOST,
+        port=int(IB_PORT),
+        client_id=OPTIONS_CLIENT_ID
+    )
+    # Try to connect but don't fail startup if it fails
+    try:
+        await options_client.connect()
+    except Exception as e:
+        logger.warning(f"Options client failed to connect on startup: {e}")
+
     yield
 
     logger.info("Shutting down MCP IB Server")
+    if options_client:
+        await options_client.disconnect()
     await pool.shutdown()
 
 
@@ -686,21 +1061,31 @@ async def health_check():
     """Health check endpoint with real IB connectivity status"""
     pool_stats = pool.get_stats() if pool else None
 
-    # Determine overall status
+    # Check options client connection (primary connection for options data)
+    options_connected = False
+    if options_client:
+        options_connected = options_client._connected and options_client._ib and options_client._ib.isConnected()
+
+    # Determine overall status - options_client is now the primary IB connection
+    # Workers are only used for MCP protocol calls (get_account_summary, etc.)
     if pool_stats:
-        ib_connected = pool_stats["workers_ib_connected"] > 0
+        workers_ib_connected = pool_stats["workers_ib_connected"] > 0
         workers_alive = pool_stats["workers_alive"] > 0
     else:
-        ib_connected = False
+        workers_ib_connected = False
         workers_alive = False
+
+    # IB is connected if EITHER options_client OR workers are connected
+    ib_connected = options_connected or workers_ib_connected
 
     cb_status = circuit_breaker.get_status()
 
     if cb_status["state"] == "open":
         status = "unhealthy"
-    elif not workers_alive:
-        status = "unhealthy"
     elif not ib_connected:
+        status = "unhealthy"
+    elif not options_connected:
+        # Workers connected but options client not - degraded for options
         status = "degraded"
     else:
         status = "healthy"
@@ -708,6 +1093,7 @@ async def health_check():
     return {
         "status": status,
         "ib_connected": ib_connected,
+        "options_client_connected": options_connected,
         "service": MCP_SERVER_NAME,
         "ib_host": IB_HOST,
         "ib_port": IB_PORT,
@@ -922,6 +1308,180 @@ async def gateway_ensure_ready(timeout: int = 90):
         "waited": waited,
         "status": await check_gateway_status()
     }
+
+
+# ============================================================================
+# Options Data REST Endpoints (for optionsearch integration)
+# Uses dedicated OptionsClient with ib_async for reqSecDefOptParams
+# ============================================================================
+
+@app.get("/options/expirations/{symbol}")
+async def get_option_expirations(symbol: str):
+    """
+    Get available option expiration dates for a symbol.
+
+    Uses reqSecDefOptParams for proper options data retrieval (no throttling).
+    Returns list of expiration dates in YYYYMMDD format.
+    """
+    global options_client
+
+    if not options_client:
+        return {"error": "Options client not initialized", "symbol": symbol}
+
+    try:
+        expirations = await options_client.get_option_expirations(symbol.upper())
+
+        if not expirations:
+            return {
+                "error": "No expirations found - check market data subscription",
+                "symbol": symbol,
+                "expirations": []
+            }
+
+        return {
+            "symbol": symbol.upper(),
+            "expirations": expirations,
+            "count": len(expirations)
+        }
+    except Exception as e:
+        logger.error(f"Error getting expirations for {symbol}: {e}")
+        return {"error": str(e), "symbol": symbol}
+
+
+@app.get("/options/chain/{symbol}/{expiration}")
+async def get_option_chain(symbol: str, expiration: str, strikes: int = 20):
+    """
+    Get options chain for a symbol and expiration.
+
+    Uses reqSecDefOptParams and market data requests.
+
+    Args:
+        symbol: Stock symbol (e.g., AAPL)
+        expiration: Expiration date in YYYYMMDD format
+        strikes: Number of strikes on each side of ATM (default 20)
+
+    Returns calls and puts with bid/ask/last/greeks.
+    """
+    global options_client
+
+    if not options_client:
+        return {"error": "Options client not initialized", "symbol": symbol}
+
+    try:
+        result = await options_client.get_option_chain(
+            symbol=symbol.upper(),
+            expiration=expiration,
+            strikes_range=strikes
+        )
+
+        if "error" in result:
+            return result
+
+        return result
+    except Exception as e:
+        logger.error(f"Error getting chain for {symbol} {expiration}: {e}")
+        return {"error": str(e), "symbol": symbol, "expiration": expiration}
+
+
+@app.get("/options/quote/{symbol}")
+async def get_stock_quote(symbol: str):
+    """
+    Get current stock quote with price.
+
+    Uses options client for market data if available, falls back to historical data.
+    Returns price, bid, ask, volume.
+    """
+    global options_client
+
+    # Try using options client first (uses live market data)
+    if options_client:
+        try:
+            if await options_client.ensure_connected():
+                stock = await options_client.get_stock_contract(symbol.upper())
+                if stock:
+                    # Request market data type 4 = delayed frozen data
+                    options_client._ib.reqMarketDataType(4)
+
+                    ticker = options_client._ib.reqMktData(stock, '', False, False)
+                    await asyncio.sleep(2)
+
+                    options_client._ib.cancelMktData(stock)
+
+                    price = ticker.last
+                    if not price or price <= 0:
+                        price = ticker.close
+                    if not price or price <= 0:
+                        if ticker.bid and ticker.ask and ticker.bid > 0 and ticker.ask > 0:
+                            price = (ticker.bid + ticker.ask) / 2
+
+                    if price and price > 0:
+                        return {
+                            "symbol": symbol.upper(),
+                            "price": float(price),
+                            "bid": float(ticker.bid) if ticker.bid and ticker.bid > 0 else None,
+                            "ask": float(ticker.ask) if ticker.ask and ticker.ask > 0 else None,
+                            "last": float(ticker.last) if ticker.last and ticker.last > 0 else None,
+                            "volume": int(ticker.volume) if ticker.volume else None,
+                            "source": "market_data"
+                        }
+        except Exception as e:
+            logger.warning(f"Options client quote failed for {symbol}, falling back to historical: {e}")
+
+    # Fall back to historical data via MCP
+    request = {
+        "jsonrpc": "2.0",
+        "id": "quote-1",
+        "method": "tools/call",
+        "params": {
+            "name": "get_historical_data",
+            "arguments": {
+                "symbol": symbol.upper(),
+                "duration": "1 D",
+                "bar_size": "1 min"
+            }
+        }
+    }
+
+    result = await send_to_ib_mcp(request)
+
+    if "error" in result:
+        return {"error": result["error"], "symbol": symbol}
+
+    try:
+        content = result.get("result", {}).get("content", [])
+        if content and len(content) > 0:
+            text = content[0].get("text", "")
+            # Parse the markdown table format
+            # Format: | Date | Open | High | Low | Close | Volume |
+            lines = text.strip().split('\n')
+
+            # Find data lines (those starting with | and containing numbers)
+            data_lines = []
+            for line in lines:
+                if line.startswith('|') and 'Date' not in line and '---' not in line and '*' not in line:
+                    data_lines.append(line)
+
+            if data_lines:
+                # Get the last data line (most recent)
+                last_line = data_lines[-1]
+                # Split by | and strip whitespace
+                parts = [p.strip() for p in last_line.split('|') if p.strip()]
+                # parts: [Date, Open, High, Low, Close, Volume]
+                if len(parts) >= 6:
+                    return {
+                        "symbol": symbol.upper(),
+                        "price": float(parts[4]) if parts[4] else None,  # Close
+                        "open": float(parts[1]) if parts[1] else None,
+                        "high": float(parts[2]) if parts[2] else None,
+                        "low": float(parts[3]) if parts[3] else None,
+                        "volume": int(float(parts[5])) if parts[5] else None,
+                        "timestamp": parts[0] if parts[0] else None,
+                        "source": "historical"
+                    }
+    except Exception as e:
+        return {"error": str(e), "symbol": symbol, "raw": result}
+
+    return {"symbol": symbol, "price": None, "raw": result}
 
 
 if __name__ == "__main__":

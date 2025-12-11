@@ -73,8 +73,15 @@ Location: `$HOME/projects/secrets/mcp-ib-paper.env`
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/mcp` | POST | JSON-RPC MCP protocol endpoint |
-| `/health` | GET | Health check with pool/IB status |
+| `/health` | GET | Health check with pool/IB status + options client |
 | `/restart-workers` | POST | Force restart all worker processes |
+
+### Options Data (via OptionsClient)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/options/quote/{symbol}` | GET | Options market data snapshot |
+| `/options/expirations/{symbol}` | GET | Expiration dates via `reqSecDefOptParams` |
+| `/options/chain/{symbol}/{expiration}` | GET | Full chain with Greeks |
 
 ### Gateway Control
 | Endpoint | Method | Description |
@@ -188,13 +195,14 @@ if response.json()["ready"]:
 ## Health Check API
 
 ### GET /health
-Returns comprehensive health status.
+Returns comprehensive health status including options client.
 
 **Response:**
 ```json
 {
   "status": "healthy",
   "ib_connected": true,
+  "options_client_connected": true,
   "service": "ib-paper",
   "ib_host": "ibgateway-paper",
   "ib_port": "4004",
@@ -217,9 +225,11 @@ Returns comprehensive health status.
 **Health Status Values:**
 | Status | Meaning |
 |--------|---------|
-| `healthy` | Workers alive and IB connected |
-| `degraded` | Workers alive but IB not connected |
+| `healthy` | Workers OR options_client connected to IB |
+| `degraded` | Containers alive but neither workers nor options_client connected |
 | `unhealthy` | No workers or circuit breaker open |
+
+**Note**: `ib_connected` is true if EITHER `options_client_connected` OR workers are connected.
 
 ---
 
@@ -276,33 +286,40 @@ curl -X POST http://localhost:48012/mcp \
 ## Architecture
 
 ```
-stocktrader-model
+optionsearch-api / stocktrader-model
       │ (HTTP)
       ▼
 mcp-ib-paper:8000
-  ├── /mcp → IBWorkerPool (3 workers)
-  ├── /health → Pool stats + IB status
+  ├── /mcp → IBWorkerPool (3 workers via ib_mcp)
+  ├── /options/* → OptionsClient (ib_async 2.1.0)
+  ├── /health → Pool + options_client status
   └── /gateway/* → Docker control
-      │ (STDIO per worker)
-      ▼
-ib_mcp.server subprocess
-      │ (IB TWS API)
-      ▼
-socat (port 4004 → 127.0.0.1:4002)
       │
-      ▼
-mcp-ib-gateway-paper
-      │ (HTTPS)
-      ▼
-Interactive Brokers Cloud
+      ├─── STDIO ───▶ ib_mcp.server subprocess
+      │                    │
+      └─── direct ──▶ OptionsClient (ib_async)
+                           │
+                           ▼
+                    socat (port 4004 → 127.0.0.1:4002)
+                           │
+                           ▼
+                    mcp-ib-gateway-paper
+                           │ (HTTPS)
+                           ▼
+                    Interactive Brokers Cloud
 ```
+
+### Two Connection Paths
+1. **MCP Workers** (`/mcp`): Use `ib_mcp` library via subprocess STDIO - for general IB requests
+2. **OptionsClient** (`/options/*`): Use `ib_async` directly - for options data via `reqSecDefOptParams` (avoids throttling)
 
 ### Features
 - **Process Pool**: 3 workers with unique client IDs
+- **Options Client**: Dedicated `ib_async` connection (client ID 99) for options data
 - **Circuit Breaker**: Prevents cascading failures (3 failures → 60s cooldown)
 - **Health Monitoring**: Background task checks IB connectivity every 30s (staggered 2s between workers)
 - **Smart Restart**: Workers only restart after 2+ consecutive failures with exponential backoff (5s→10s→20s→40s→60s max)
-- **Auto-Reconnect**: Gateway automatically restarts if all workers disconnect for 60s
+- **Auto-Reconnect**: Gateway automatically restarts if BOTH workers AND options_client disconnect for 60s
 - **Ensure Ready**: `/gateway/ensure-ready` endpoint for client apps to verify connection
 - **Gateway Control**: Docker socket for container management
 
@@ -311,7 +328,7 @@ Interactive Brokers Cloud
 - Worker restart only after 2+ consecutive health check failures
 - Exponential backoff between restarts prevents restart storms
 - `restart_count` tracks attempts, resets only on successful IB connection
-- Gateway auto-restart after all workers disconnected for 2 consecutive checks (60s)
+- Gateway auto-restart only if BOTH workers AND options_client disconnected for 2 consecutive checks (60s)
 
 ---
 
@@ -442,4 +459,4 @@ docker stop mcp-ib-gateway-paper mcp-ib-paper
 ```
 
 ---
-*Last Updated: 2025-12-05 (settings persistence, operational workflow, lessons learned)*
+*Last Updated: 2025-12-11 (options client architecture, health check updates, ib_async 2.1.0)*
