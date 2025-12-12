@@ -386,6 +386,420 @@ class OptionsClient:
 options_client: Optional[OptionsClient] = None
 
 
+# ============================================================================
+# Orders Client for Paper Trading
+# Uses ib_async directly for order placement
+# ============================================================================
+
+class OrdersClient:
+    """
+    Dedicated IB client for order placement using ib_async directly.
+    Requires IB_READONLY=false in environment.
+    """
+
+    def __init__(self, host: str, port: int, client_id: int):
+        self.host = host
+        self.port = port
+        self.client_id = client_id
+        self._ib: Optional[ib.IB] = None
+        self._lock = asyncio.Lock()
+        self._connected = False
+        self._readonly = os.getenv("IB_READONLY", "true").lower() == "true"
+
+    async def connect(self) -> bool:
+        """Connect to IB Gateway"""
+        async with self._lock:
+            if self._connected and self._ib and self._ib.isConnected():
+                return True
+
+            try:
+                self._ib = ib.IB()
+                await self._ib.connectAsync(
+                    self.host,
+                    self.port,
+                    clientId=self.client_id,
+                    readonly=self._readonly,  # Use config setting
+                    timeout=30
+                )
+                self._connected = True
+                logger.info(f"Orders client connected to IB at {self.host}:{self.port} (readonly={self._readonly})")
+                return True
+            except Exception as e:
+                logger.error(f"Orders client failed to connect: {e}")
+                self._connected = False
+                return False
+
+    async def disconnect(self):
+        """Disconnect from IB Gateway"""
+        async with self._lock:
+            if self._ib:
+                self._ib.disconnect()
+                self._connected = False
+                logger.info("Orders client disconnected")
+
+    async def ensure_connected(self) -> bool:
+        """Ensure connection is active, reconnect if needed"""
+        if not self._connected or not self._ib or not self._ib.isConnected():
+            return await self.connect()
+        return True
+
+    async def get_option_contract(
+        self,
+        symbol: str,
+        expiration: str,
+        strike: float,
+        right: str
+    ) -> Optional[ib.Option]:
+        """
+        Get qualified option contract.
+
+        Args:
+            symbol: Underlying symbol (e.g., AAPL)
+            expiration: Expiration in YYYYMMDD format
+            strike: Strike price
+            right: 'C' for call, 'P' for put
+        """
+        if not await self.ensure_connected():
+            return None
+
+        try:
+            option = ib.Option(
+                symbol.upper(),
+                expiration,
+                strike,
+                right.upper(),
+                "SMART"
+            )
+            contracts = await asyncio.wait_for(
+                self._ib.qualifyContractsAsync(option),
+                timeout=30
+            )
+            if contracts and len(contracts) > 0:
+                return contracts[0]
+            return None
+        except Exception as e:
+            logger.error(f"Failed to qualify option contract: {e}")
+            return None
+
+    async def place_option_order(
+        self,
+        symbol: str,
+        expiration: str,
+        strike: float,
+        right: str,
+        action: str,
+        quantity: int,
+        order_type: str = "LMT",
+        limit_price: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Place an option order.
+
+        Args:
+            symbol: Underlying symbol
+            expiration: Expiration in YYYYMMDD format
+            strike: Strike price
+            right: 'C' for call, 'P' for put
+            action: 'BUY' or 'SELL'
+            quantity: Number of contracts
+            order_type: 'LMT' or 'MKT'
+            limit_price: Required for limit orders
+
+        Returns:
+            Dict with order_id, status, and details
+        """
+        if self._readonly:
+            return {
+                "success": False,
+                "error": "Order placement disabled (IB_READONLY=true)",
+                "note": "Set IB_READONLY=false in mcp-ib.env to enable trading"
+            }
+
+        if not await self.ensure_connected():
+            return {
+                "success": False,
+                "error": "Not connected to IB Gateway"
+            }
+
+        try:
+            # Get qualified contract
+            contract = await self.get_option_contract(symbol, expiration, strike, right)
+            if not contract:
+                return {
+                    "success": False,
+                    "error": f"Could not find option contract: {symbol} {expiration} {strike} {right}"
+                }
+
+            # Create order
+            if order_type.upper() == "MKT":
+                order = ib.MarketOrder(action.upper(), quantity)
+            else:
+                if limit_price is None:
+                    return {
+                        "success": False,
+                        "error": "Limit price required for limit orders"
+                    }
+                order = ib.LimitOrder(action.upper(), quantity, limit_price)
+
+            # Place the order
+            trade = self._ib.placeOrder(contract, order)
+
+            # Wait for order acknowledgment
+            await asyncio.sleep(1)
+
+            return {
+                "success": True,
+                "order_id": trade.order.orderId,
+                "perm_id": trade.order.permId,
+                "status": trade.orderStatus.status,
+                "filled": trade.orderStatus.filled,
+                "remaining": trade.orderStatus.remaining,
+                "avg_fill_price": trade.orderStatus.avgFillPrice,
+                "contract": {
+                    "symbol": contract.symbol,
+                    "expiration": contract.lastTradeDateOrContractMonth,
+                    "strike": contract.strike,
+                    "right": contract.right,
+                    "exchange": contract.exchange
+                },
+                "order": {
+                    "action": order.action,
+                    "quantity": order.totalQuantity,
+                    "type": order.orderType,
+                    "limit_price": getattr(order, 'lmtPrice', None)
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to place order: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def place_combo_order(
+        self,
+        legs: List[Dict[str, Any]],
+        action: str,
+        quantity: int,
+        order_type: str = "LMT",
+        limit_price: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Place a multi-leg combo order (spread).
+
+        Args:
+            legs: List of leg definitions, each with:
+                - symbol: Underlying symbol
+                - expiration: YYYYMMDD format
+                - strike: Strike price
+                - right: 'C' or 'P'
+                - action: 'BUY' or 'SELL' for this leg
+                - ratio: Usually 1
+            action: Overall combo action (BUY = enter, SELL = exit)
+            quantity: Number of combo contracts
+            order_type: 'LMT' or 'MKT'
+            limit_price: Net debit (positive) or credit (negative) for the combo
+
+        Returns:
+            Dict with order details
+        """
+        if self._readonly:
+            return {
+                "success": False,
+                "error": "Order placement disabled (IB_READONLY=true)",
+                "note": "Set IB_READONLY=false in mcp-ib.env to enable trading"
+            }
+
+        if not await self.ensure_connected():
+            return {
+                "success": False,
+                "error": "Not connected to IB Gateway"
+            }
+
+        try:
+            # Qualify all leg contracts
+            combo_legs = []
+            for leg in legs:
+                contract = await self.get_option_contract(
+                    leg["symbol"],
+                    leg["expiration"],
+                    leg["strike"],
+                    leg["right"]
+                )
+                if not contract:
+                    return {
+                        "success": False,
+                        "error": f"Could not find contract for leg: {leg}"
+                    }
+
+                combo_leg = ib.ComboLeg(
+                    conId=contract.conId,
+                    ratio=leg.get("ratio", 1),
+                    action=leg["action"].upper(),
+                    exchange="SMART"
+                )
+                combo_legs.append(combo_leg)
+
+            # Create combo contract
+            combo = ib.Contract()
+            combo.symbol = legs[0]["symbol"]
+            combo.secType = "BAG"
+            combo.currency = "USD"
+            combo.exchange = "SMART"
+            combo.comboLegs = combo_legs
+
+            # Create order
+            if order_type.upper() == "MKT":
+                order = ib.MarketOrder(action.upper(), quantity)
+            else:
+                if limit_price is None:
+                    return {
+                        "success": False,
+                        "error": "Limit price required for limit orders"
+                    }
+                order = ib.LimitOrder(action.upper(), quantity, limit_price)
+
+            # Place the order
+            trade = self._ib.placeOrder(combo, order)
+
+            # Wait for order acknowledgment
+            await asyncio.sleep(1)
+
+            return {
+                "success": True,
+                "order_id": trade.order.orderId,
+                "perm_id": trade.order.permId,
+                "status": trade.orderStatus.status,
+                "filled": trade.orderStatus.filled,
+                "remaining": trade.orderStatus.remaining,
+                "avg_fill_price": trade.orderStatus.avgFillPrice,
+                "combo_legs": [
+                    {
+                        "conId": cl.conId,
+                        "action": cl.action,
+                        "ratio": cl.ratio
+                    }
+                    for cl in combo_legs
+                ],
+                "order": {
+                    "action": order.action,
+                    "quantity": order.totalQuantity,
+                    "type": order.orderType,
+                    "limit_price": getattr(order, 'lmtPrice', None)
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to place combo order: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def get_order_status(self, order_id: int) -> Dict[str, Any]:
+        """Get status of a specific order"""
+        if not await self.ensure_connected():
+            return {"error": "Not connected to IB Gateway"}
+
+        try:
+            # Get all open orders
+            trades = self._ib.trades()
+
+            for trade in trades:
+                if trade.order.orderId == order_id:
+                    return {
+                        "found": True,
+                        "order_id": trade.order.orderId,
+                        "status": trade.orderStatus.status,
+                        "filled": trade.orderStatus.filled,
+                        "remaining": trade.orderStatus.remaining,
+                        "avg_fill_price": trade.orderStatus.avgFillPrice,
+                        "last_fill_price": trade.orderStatus.lastFillPrice,
+                        "why_held": trade.orderStatus.whyHeld
+                    }
+
+            return {
+                "found": False,
+                "order_id": order_id,
+                "note": "Order not found in open orders"
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get order status: {e}")
+            return {"error": str(e)}
+
+    async def cancel_order(self, order_id: int) -> Dict[str, Any]:
+        """Cancel an open order"""
+        if self._readonly:
+            return {
+                "success": False,
+                "error": "Order cancellation disabled (IB_READONLY=true)"
+            }
+
+        if not await self.ensure_connected():
+            return {"error": "Not connected to IB Gateway"}
+
+        try:
+            trades = self._ib.trades()
+
+            for trade in trades:
+                if trade.order.orderId == order_id:
+                    self._ib.cancelOrder(trade.order)
+                    await asyncio.sleep(0.5)
+
+                    return {
+                        "success": True,
+                        "order_id": order_id,
+                        "status": "Cancel requested"
+                    }
+
+            return {
+                "success": False,
+                "error": f"Order {order_id} not found"
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to cancel order: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_open_orders(self) -> List[Dict[str, Any]]:
+        """Get all open orders"""
+        if not await self.ensure_connected():
+            return []
+
+        try:
+            trades = self._ib.trades()
+            orders = []
+
+            for trade in trades:
+                orders.append({
+                    "order_id": trade.order.orderId,
+                    "perm_id": trade.order.permId,
+                    "status": trade.orderStatus.status,
+                    "action": trade.order.action,
+                    "quantity": trade.order.totalQuantity,
+                    "filled": trade.orderStatus.filled,
+                    "remaining": trade.orderStatus.remaining,
+                    "order_type": trade.order.orderType,
+                    "limit_price": getattr(trade.order, 'lmtPrice', None),
+                    "avg_fill_price": trade.orderStatus.avgFillPrice
+                })
+
+            return orders
+
+        except Exception as e:
+            logger.error(f"Failed to get open orders: {e}")
+            return []
+
+
+# Global orders client instance
+orders_client: Optional[OrdersClient] = None
+
+# Client ID for orders (separate from options to avoid conflicts)
+ORDERS_CLIENT_ID = int(os.getenv("ORDERS_CLIENT_ID", "98"))
+
+
 async def docker_command(action: str, container: str = None) -> Dict[str, Any]:
     """Execute a Docker command on the gateway container"""
     import subprocess
@@ -1022,11 +1436,12 @@ async def send_to_ib_mcp(request_data: Dict[str, Any]) -> Dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
-    global pool, options_client
+    global pool, options_client, orders_client
     logger.info(f"Starting MCP IB Server with {POOL_SIZE} workers")
     logger.info(f"Connecting to {IB_HOST}:{IB_PORT}, base client_id={IB_CLIENT_ID_BASE}")
     logger.info(f"Health check interval: {HEALTH_CHECK_INTERVAL}s, Max retries: {MAX_RETRIES}")
     logger.info(f"Options timeout: {OPTIONS_TIMEOUT}s, Options client_id: {OPTIONS_CLIENT_ID}")
+    logger.info(f"Orders client_id: {ORDERS_CLIENT_ID}, IB_READONLY={os.getenv('IB_READONLY', 'true')}")
 
     # Initialize MCP worker pool
     pool = IBWorkerPool(size=POOL_SIZE, base_client_id=IB_CLIENT_ID_BASE)
@@ -1045,9 +1460,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Options client failed to connect on startup: {e}")
 
+    # Initialize orders client for paper trading
+    orders_client = OrdersClient(
+        host=IB_HOST,
+        port=int(IB_PORT),
+        client_id=ORDERS_CLIENT_ID
+    )
+    # Try to connect but don't fail startup if it fails
+    try:
+        await orders_client.connect()
+    except Exception as e:
+        logger.warning(f"Orders client failed to connect on startup: {e}")
+
     yield
 
     logger.info("Shutting down MCP IB Server")
+    if orders_client:
+        await orders_client.disconnect()
     if options_client:
         await options_client.disconnect()
     await pool.shutdown()
@@ -1482,6 +1911,171 @@ async def get_stock_quote(symbol: str):
         return {"error": str(e), "symbol": symbol, "raw": result}
 
     return {"symbol": symbol, "price": None, "raw": result}
+
+
+# ============================================================================
+# Orders REST Endpoints (for paper trading)
+# Requires IB_READONLY=false in environment
+# ============================================================================
+
+class SingleLegOrderRequest(BaseModel):
+    """Request to place a single leg option order"""
+    symbol: str
+    expiration: str  # YYYYMMDD format
+    strike: float
+    right: str  # C or P
+    action: str  # BUY or SELL
+    quantity: int
+    order_type: str = "LMT"  # LMT or MKT
+    limit_price: Optional[float] = None
+
+
+class ComboLeg(BaseModel):
+    """Single leg in a combo order"""
+    symbol: str
+    expiration: str  # YYYYMMDD format
+    strike: float
+    right: str  # C or P
+    action: str  # BUY or SELL
+    ratio: int = 1
+
+
+class ComboOrderRequest(BaseModel):
+    """Request to place a multi-leg combo order (spread)"""
+    legs: List[ComboLeg]
+    action: str = "BUY"  # Overall combo action
+    quantity: int
+    order_type: str = "LMT"
+    limit_price: Optional[float] = None
+
+
+@app.get("/orders/capability")
+async def get_order_capability():
+    """
+    Check if order placement is enabled.
+
+    Returns readonly status and connection state.
+    """
+    global orders_client
+
+    readonly = os.getenv("IB_READONLY", "true").lower() == "true"
+    connected = False
+
+    if orders_client:
+        connected = orders_client._connected and orders_client._ib and orders_client._ib.isConnected()
+
+    return {
+        "readonly": readonly,
+        "connected": connected,
+        "can_place_orders": not readonly and connected,
+        "note": "Set IB_READONLY=false in mcp-ib.env to enable trading" if readonly else "Order placement enabled"
+    }
+
+
+@app.get("/orders")
+async def get_open_orders():
+    """
+    Get all open orders.
+
+    Returns list of orders with status, fills, etc.
+    """
+    global orders_client
+
+    if not orders_client:
+        return {"error": "Orders client not initialized"}
+
+    try:
+        orders = await orders_client.get_open_orders()
+        return {
+            "orders": orders,
+            "count": len(orders),
+            "readonly": orders_client._readonly
+        }
+    except Exception as e:
+        logger.error(f"Error getting open orders: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/orders/{order_id}")
+async def get_order_status(order_id: int):
+    """
+    Get status of a specific order.
+
+    Args:
+        order_id: The IB order ID
+    """
+    global orders_client
+
+    if not orders_client:
+        return {"error": "Orders client not initialized"}
+
+    return await orders_client.get_order_status(order_id)
+
+
+@app.post("/orders/single")
+async def place_single_order(request: SingleLegOrderRequest):
+    """
+    Place a single leg option order.
+
+    This is for buying or selling individual options (calls or puts).
+    """
+    global orders_client
+
+    if not orders_client:
+        return {"error": "Orders client not initialized"}
+
+    return await orders_client.place_option_order(
+        symbol=request.symbol,
+        expiration=request.expiration,
+        strike=request.strike,
+        right=request.right,
+        action=request.action,
+        quantity=request.quantity,
+        order_type=request.order_type,
+        limit_price=request.limit_price
+    )
+
+
+@app.post("/orders/combo")
+async def place_combo_order(request: ComboOrderRequest):
+    """
+    Place a multi-leg combo order (spread).
+
+    Use this for vertical spreads, iron condors, etc.
+    The limit_price is the net premium:
+    - Positive = net debit (you pay)
+    - Negative = net credit (you receive)
+    """
+    global orders_client
+
+    if not orders_client:
+        return {"error": "Orders client not initialized"}
+
+    legs = [leg.dict() for leg in request.legs]
+
+    return await orders_client.place_combo_order(
+        legs=legs,
+        action=request.action,
+        quantity=request.quantity,
+        order_type=request.order_type,
+        limit_price=request.limit_price
+    )
+
+
+@app.delete("/orders/{order_id}")
+async def cancel_order(order_id: int):
+    """
+    Cancel an open order.
+
+    Args:
+        order_id: The IB order ID to cancel
+    """
+    global orders_client
+
+    if not orders_client:
+        return {"error": "Orders client not initialized"}
+
+    return await orders_client.cancel_order(order_id)
 
 
 if __name__ == "__main__":
