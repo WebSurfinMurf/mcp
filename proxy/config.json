@@ -1,0 +1,61 @@
+{
+  "mcpProxy": {
+    "addr": ":9090",
+    "baseURL": "http://localhost:9090",
+    "name": "Local MCP Proxy",
+    "type": "streamable-http",
+    "options": {
+      "logEnabled": true,
+      "panicIfInvalid": false
+    }
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@0.6.2", "/workspace"],
+      "env": {
+        "NODE_NO_WARNINGS": "1"
+      }
+    },
+    "postgres": {
+      "command": "/wrappers/postgres-wrapper.sh",
+      "args": []
+    },
+    "playwright": {
+      "command": "/wrappers/playwright-wrapper.sh",
+      "args": []
+    },
+    "minio": {
+      "command": "/wrappers/minio-wrapper.sh",
+      "args": []
+    },
+    "n8n": {
+      "command": "/wrappers/n8n-wrapper.sh",
+      "args": []
+    },
+    "timescaledb": {
+      "command": "/wrappers/timescaledb-wrapper.sh",
+      "args": []
+    },
+    "ib": {
+      "command": "/wrappers/ib-wrapper.sh",
+      "args": []
+    },
+    "arangodb": {
+      "command": "/wrappers/arangodb-wrapper.sh",
+      "args": []
+    },
+    "openmemory": {
+      "command": "/wrappers/openmemory-wrapper.sh",
+      "args": []
+    },
+    "tradingview": {
+      "command": "/wrappers/tradingview-wrapper.sh",
+      "args": []
+    },
+    "gemini-image": {
+      "command": "/wrappers/gemini-npx-wrapper.sh",
+      "args": []
+    }
+  }
+}

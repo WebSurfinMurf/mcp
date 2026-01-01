@@ -11,6 +11,7 @@ services:
       - ./config.json:/config/config.json:ro
       - ./wrappers:/wrappers:ro
       - /home/administrator/projects:/workspace:ro
+      - /home/administrator/projects/secrets:/secrets:ro
       - /home/administrator/projects/nginx/sites/generated-images:/generated-images
       - mcp-memory-data:/app/dist
     networks:
