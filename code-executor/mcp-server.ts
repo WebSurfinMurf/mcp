@@ -130,14 +130,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: 'dispatch_to_swarm',
-        description: 'Dispatch a prompt to an AI swarm node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with access to the /workspace directory. Use this to delegate tasks to other AI agents.',
+        name: 'dispatch_to_reviewboard',
+        description: 'Dispatch a prompt to an AI Review Board node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with access to the /workspace directory. Use this to delegate tasks to other AI agents.',
         inputSchema: {
           type: 'object',
           properties: {
             prompt: {
               type: 'string',
-              description: 'The prompt/task to send to the swarm node',
+              description: 'The prompt/task to send to the Review Board node',
             },
             target: {
               type: 'string',
@@ -154,8 +154,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: 'swarm_health',
-        description: 'Check health status of all AI swarm nodes (Gemini, Codex, Claude).',
+        name: 'reviewboard_health',
+        description: 'Check health status of all AI Review Board nodes (Gemini, Codex, Claude).',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -265,10 +265,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'dispatch_to_swarm': {
+      case 'dispatch_to_reviewboard': {
         const { prompt, target, timeout = 900 } = args as SwarmDispatchArgs;
 
-        const response = await fetch(`${API_URL}/swarm/dispatch`, {
+        const response = await fetch(`${API_URL}/reviewboard/dispatch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, target, timeout }),
@@ -281,7 +281,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: 'text',
-                text: `Swarm dispatch to ${target} failed: ${result.error}`,
+                text: `Review Board dispatch to ${target} failed: ${result.error}`,
               },
             ],
             isError: true,
@@ -303,8 +303,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'swarm_health': {
-        const response = await fetch(`${API_URL}/swarm/health`);
+      case 'reviewboard_health': {
+        const response = await fetch(`${API_URL}/reviewboard/health`);
         const health = await response.json();
 
         return {

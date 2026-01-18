@@ -44,10 +44,10 @@ interface SwarmResponse {
   metrics?: Record<string, any>;
 }
 
-const SWARM_NODES: Record<string, string> = {
-  gemini: 'http://swarm-gemini:8080',
-  codex: 'http://swarm-codex:8080',
-  claude: 'http://swarm-claude:8080',
+const REVIEWBOARD_NODES: Record<string, string> = {
+  gemini: 'http://reviewboard-gemini:8080',
+  codex: 'http://reviewboard-codex:8080',
+  claude: 'http://reviewboard-claude:8080',
 };
 
 interface ExecuteResponse {
@@ -516,9 +516,9 @@ fastify.get<{
 });
 
 /**
- * POST /swarm/dispatch - Dispatch prompt to AI swarm node
+ * POST /reviewboard/dispatch - Dispatch prompt to AI Review Board node
  */
-fastify.post<{ Body: SwarmDispatchRequest }>('/swarm/dispatch', async (request, reply) => {
+fastify.post<{ Body: SwarmDispatchRequest }>('/reviewboard/dispatch', async (request, reply) => {
   const { prompt, target, timeout = 300, working_dir = '/workspace' } = request.body;
 
   // Validation
@@ -526,20 +526,20 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/swarm/dispatch', async (request, 
     return reply.code(400).send({ error: 'Prompt is required and must be a string' });
   }
 
-  if (!target || !SWARM_NODES[target]) {
+  if (!target || !REVIEWBOARD_NODES[target]) {
     return reply.code(400).send({
-      error: `Invalid target. Valid targets: ${Object.keys(SWARM_NODES).join(', ')}`
+      error: `Invalid target. Valid targets: ${Object.keys(REVIEWBOARD_NODES).join(', ')}`
     });
   }
 
-  const nodeUrl = SWARM_NODES[target];
+  const nodeUrl = REVIEWBOARD_NODES[target];
 
   fastify.log.info({
     target,
     promptLength: prompt.length,
     timeout,
     preview: prompt.substring(0, 100)
-  }, 'Dispatching to swarm node');
+  }, 'Dispatching to Review Board node');
 
   try {
     const controller = new AbortController();
@@ -556,10 +556,10 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/swarm/dispatch', async (request, 
 
     if (!response.ok) {
       const errorText = await response.text();
-      fastify.log.error({ target, status: response.status, error: errorText }, 'Swarm node returned error');
+      fastify.log.error({ target, status: response.status, error: errorText }, 'Review Board node returned error');
       return reply.code(response.status).send({
         success: false,
-        error: `Swarm node returned ${response.status}: ${errorText}`
+        error: `Review Board node returned ${response.status}: ${errorText}`
       });
     }
 
@@ -570,20 +570,20 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/swarm/dispatch', async (request, 
       success: result.success,
       hasResult: !!result.result,
       hasError: !!result.error
-    }, 'Swarm dispatch completed');
+    }, 'Review Board dispatch completed');
 
     return result;
 
   } catch (error: any) {
     if (error.name === 'AbortError') {
-      fastify.log.error({ target, timeout }, 'Swarm dispatch timed out');
+      fastify.log.error({ target, timeout }, 'Review Board dispatch timed out');
       return reply.code(504).send({
         success: false,
         error: `Request to ${target} timed out after ${timeout}s`
       });
     }
 
-    fastify.log.error({ target, error: error.message }, 'Swarm dispatch failed');
+    fastify.log.error({ target, error: error.message }, 'Review Board dispatch failed');
     return reply.code(500).send({
       success: false,
       error: `Failed to reach ${target}: ${error.message}`
@@ -592,12 +592,12 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/swarm/dispatch', async (request, 
 });
 
 /**
- * GET /swarm/health - Check health of all swarm nodes
+ * GET /reviewboard/health - Check health of all Review Board nodes
  */
-fastify.get('/swarm/health', async () => {
+fastify.get('/reviewboard/health', async () => {
   const results: Record<string, { status: string; node_type?: string; error?: string }> = {};
 
-  for (const [name, url] of Object.entries(SWARM_NODES)) {
+  for (const [name, url] of Object.entries(REVIEWBOARD_NODES)) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -617,9 +617,9 @@ fastify.get('/swarm/health', async () => {
   }
 
   return {
-    swarm: results,
+    reviewboard: results,
     healthyNodes: Object.values(results).filter(r => r.status === 'healthy').length,
-    totalNodes: Object.keys(SWARM_NODES).length
+    totalNodes: Object.keys(REVIEWBOARD_NODES).length
   };
 });
 
