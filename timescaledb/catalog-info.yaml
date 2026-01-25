@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mcp-timescaledb
+  description: MCP server for TimescaleDB time-series database operations
+spec:
+  type: service
+  lifecycle: production
+  owner: administrators

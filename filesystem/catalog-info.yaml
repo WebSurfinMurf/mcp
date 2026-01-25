@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mcp-filesystem
+  description: MCP server for filesystem operations
+spec:
+  type: service
+  lifecycle: production
+  owner: administrators

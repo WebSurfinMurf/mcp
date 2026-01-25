@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mcp-ib-live
+  description: MCP server for Interactive Brokers live trading
+spec:
+  type: service
+  lifecycle: production
+  owner: administrators

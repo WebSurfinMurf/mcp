@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mcp-ib-paper
+  description: MCP server for Interactive Brokers paper trading
+spec:
+  type: service
+  lifecycle: production
+  owner: administrators

@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mcp-playwright
+  description: MCP server for Playwright browser automation
+spec:
+  type: service
+  lifecycle: production
+  owner: administrators

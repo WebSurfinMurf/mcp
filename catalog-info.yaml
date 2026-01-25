@@ -1,0 +1,22 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: mcp-servers
+  description: MCP Server components for Claude Code integration
+spec:
+  targets:
+    - ./arangodb/catalog-info.yaml
+    - ./code-executor/catalog-info.yaml
+    - ./fetch/catalog-info.yaml
+    - ./filesystem/catalog-info.yaml
+    - ./gemini-image/catalog-info.yaml
+    - ./ib/catalog-info.yaml
+    - ./ib-live/catalog-info.yaml
+    - ./ib-paper/catalog-info.yaml
+    - ./matrix/catalog-info.yaml
+    - ./minio/catalog-info.yaml
+    - ./n8n/catalog-info.yaml
+    - ./openmemory/catalog-info.yaml
+    - ./playwright/catalog-info.yaml
+    - ./postgres/catalog-info.yaml
+    - ./timescaledb/catalog-info.yaml

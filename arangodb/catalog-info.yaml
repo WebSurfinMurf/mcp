@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: mcp-arangodb
+  description: MCP server for ArangoDB graph database operations
+spec:
+  type: service
+  lifecycle: production
+  owner: administrators
