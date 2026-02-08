@@ -3,15 +3,27 @@
 ## 📋 Project Overview
 Central MCP proxy using TBXark/mcp-proxy to serve multiple MCP services via Streamable HTTP. Provides a unified HTTP endpoint for Claude Code to access filesystem and database operations.
 
-## 🟢 Current State (2025-11-23)
-- **Status**: ✅ Operational with 10 services
+## 🟢 Current State (2026-01-25)
+- **Status**: ✅ Operational with 12 services
 - **Proxy Image**: `ghcr.io/tbxark/mcp-proxy:latest`
 - **Listen Address**: `http://localhost:9090`
 - **Transport**: Streamable HTTP
-- **Services**: filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb, openmemory
-- **Total Tools**: 67 tools available across all services
+- **Services**: filesystem, postgres, playwright, memory, minio, n8n, timescaledb, ib, arangodb, openmemory, tradingview, gemini-image, keycloak
+- **Total Tools**: 71+ tools available across all services
 
 ## 📝 Recent Work & Changes
+
+### Session: 2026-01-25 - Keycloak MCP Integration
+- **Added**: Keycloak MCP server for OAuth2 client credential management
+- **Created**: `/wrappers/keycloak-wrapper.sh` - Loads secrets and runs the MCP server
+- **Updated**: `config.json` - added "keycloak" server entry
+- **Updated**: `docker-compose.yml` - added keycloak-net network
+- **Tools**: 4 tools available (create_client, get_client_secret, add_groups_mapper, list_clients)
+- **Source**: Custom TypeScript implementation at `/workspace/mcp/keycloak/dist/index.js`
+- **Network**: keycloak-net for internal API access to Keycloak
+- **Secrets**: `/secrets/keycloak-admin.env` (mounted from projects/secrets)
+- **Status**: ✅ Fully operational
+- **Documentation**: `/home/administrator/projects/mcp/keycloak/CLAUDE.md`
 
 ### Session: 2025-11-23 - OpenMemory MCP Integration
 - **Added**: OpenMemory MCP server for semantic memory operations

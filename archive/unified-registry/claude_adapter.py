@@ -244,8 +244,8 @@ class ClaudeMCPAdapter:
                 # Try to load GitHub token from secrets
                 try:
                     import os
-                    if os.path.exists("/home/administrator/secrets/github.env"):
-                        with open("/home/administrator/secrets/github.env") as f:
+                    if os.path.exists("/home/administrator/projects/secrets/github.env"):
+                        with open("/home/administrator/projects/secrets/github.env") as f:
                             for line in f:
                                 if line.startswith("GITHUB_PERSONAL_ACCESS_TOKEN="):
                                     token = line.split("=", 1)[1].strip()

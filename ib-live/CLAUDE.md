@@ -28,7 +28,7 @@ Location: `$HOME/projects/secrets/mcp-ib-live.env`
 
 **WARNING**: This will use REAL MONEY. Double-check everything.
 
-1. Update `$HOME/secrets/mcp-ib-live.env`:
+1. Update `$HOME/projects/secrets/mcp-ib-live.env`:
    ```bash
    TRADING_MODE=live
    IB_PORT=4003

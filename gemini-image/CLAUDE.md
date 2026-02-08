@@ -40,7 +40,7 @@ AI image generation using Google's Gemini models. Generates images from text pro
 
 ## Configuration
 
-**API Key Location:** `/home/administrator/secrets/gemini-image.env`
+**API Key Location:** `/home/administrator/projects/secrets/gemini-image.env`
 ```bash
 GEMINI_API_KEY=your_api_key_here
 ```

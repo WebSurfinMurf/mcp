@@ -21,6 +21,7 @@ services:
       - n8n-net
       - arangodb-net
       - tradingview-net
+      - keycloak-net
     command: ["-config", "/config/config.json"]
     healthcheck:
       test: ["CMD", "/bin/sh", "-c", "test -f /config/config.json"]
@@ -40,6 +41,8 @@ networks:
   arangodb-net:
     external: true
   tradingview-net:
+    external: true
+  keycloak-net:
     external: true
 
 volumes:

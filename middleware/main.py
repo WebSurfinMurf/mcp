@@ -20,17 +20,20 @@ LITELLM_URL = "http://litellm:4000"
 MCP_PROXY_URL = "http://mcp-proxy:9090"
 MAX_TOOL_ITERATIONS = 5
 
-# MCP server endpoints (from proxy config)
+# MCP server endpoints (from proxy config.json)
 MCP_SERVERS = {
     "filesystem": "/filesystem/mcp",
     "postgres": "/postgres/mcp",
     "playwright": "/playwright/mcp",
-    "memory": "/memory/mcp",
     "minio": "/minio/mcp",
     "n8n": "/n8n/mcp",
     "timescaledb": "/timescaledb/mcp",
     "ib": "/ib/mcp",
-    "arangodb": "/arangodb/mcp"
+    "arangodb": "/arangodb/mcp",
+    "openmemory": "/openmemory/mcp",
+    "tradingview": "/tradingview/mcp",
+    "gemini-image": "/gemini-image/mcp",
+    "keycloak": "/keycloak/mcp"
 }
 
 # Cache for MCP tools organized by server
@@ -58,15 +61,27 @@ def fetch_tools_from_server(server_name: str, endpoint: str):
 
         openai_tools = []
         for tool in tools:
+            # Get input schema and ensure it has required fields for Anthropic API
+            input_schema = tool.get("inputSchema", {})
+            if not isinstance(input_schema, dict):
+                input_schema = {}
+            # Anthropic requires type: object
+            if input_schema.get("type") != "object":
+                input_schema = {
+                    "type": "object",
+                    "properties": input_schema.get("properties", {}),
+                    "required": input_schema.get("required", [])
+                }
+            # Ensure properties exists
+            if "properties" not in input_schema:
+                input_schema["properties"] = {}
+
             openai_tool = {
                 "type": "function",
                 "function": {
                     "name": f"mcp_{server_name}_{tool['name']}",
                     "description": f"[{server_name.upper()}] {tool.get('description', '')}",
-                    "parameters": tool.get("inputSchema", {
-                        "type": "object",
-                        "properties": {}
-                    })
+                    "parameters": input_schema
                 },
                 "_mcp_server": server_name,
                 "_original_name": tool['name']

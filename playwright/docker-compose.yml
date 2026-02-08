@@ -25,3 +25,19 @@ services:
     shm_size: "2gb"
     security_opt:
       - seccomp:unconfined
+    networks:
+      - default
+      - mcp-net
+      - traefik-net
+    extra_hosts:
+      - "backstage.ai-servicers.com:172.25.0.6"
+      - "keycloak.ai-servicers.com:172.25.0.6"
+      - "gitlab.ai-servicers.com:172.25.0.6"
+      - "traefik.ai-servicers.com:172.25.0.6"
+
+networks:
+  default:
+  mcp-net:
+    external: true
+  traefik-net:
+    external: true

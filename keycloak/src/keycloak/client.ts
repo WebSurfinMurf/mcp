@@ -1,0 +1,315 @@
+/**
+ * Keycloak HTTP Client with Token Management
+ *
+ * Features:
+ * - Automatic token acquisition and refresh
+ * - Mutex-protected token operations (thread-safe)
+ * - Configurable refresh buffer (default 30 seconds before expiry)
+ * - Automatic retry on 401 Unauthorized
+ */
+
+import {
+  TokenResponse,
+  CachedToken,
+  KeycloakError,
+  ServerConfig,
+} from './types.js';
+import { tokenEndpoint } from './endpoints.js';
+
+/**
+ * Simple mutex implementation for token refresh synchronization
+ * Prevents multiple concurrent token refresh requests
+ */
+class Mutex {
+  private locked = false;
+  private queue: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.locked) {
+        this.locked = true;
+        resolve();
+      } else {
+        this.queue.push(resolve);
+      }
+    });
+  }
+
+  release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      next?.();
+    } else {
+      this.locked = false;
+    }
+  }
+}
+
+/**
+ * Keycloak HTTP client with automatic token management
+ */
+export class KeycloakClient {
+  private config: ServerConfig;
+  private cachedToken: CachedToken | null = null;
+  private tokenMutex = new Mutex();
+  private refreshBuffer: number; // milliseconds
+
+  constructor(config: ServerConfig) {
+    this.config = config;
+    // Default 30 second buffer before token expiry
+    this.refreshBuffer = (config.tokenRefreshBuffer ?? 30) * 1000;
+  }
+
+  /**
+   * Get a valid access token, refreshing if necessary
+   * Thread-safe: uses mutex to prevent concurrent refresh requests
+   */
+  async getToken(): Promise<string> {
+    // Check if we have a valid cached token
+    if (this.cachedToken && !this.isTokenExpired()) {
+      return this.cachedToken.accessToken;
+    }
+
+    // Acquire mutex for token refresh
+    await this.tokenMutex.acquire();
+    try {
+      // Double-check after acquiring mutex (another request may have refreshed)
+      if (this.cachedToken && !this.isTokenExpired()) {
+        return this.cachedToken.accessToken;
+      }
+
+      // Fetch new token
+      const tokenResponse = await this.fetchToken();
+
+      // Cache the token with expiration time
+      this.cachedToken = {
+        accessToken: tokenResponse.access_token,
+        expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
+      };
+
+      return this.cachedToken.accessToken;
+    } finally {
+      this.tokenMutex.release();
+    }
+  }
+
+  /**
+   * Check if the cached token is expired or about to expire
+   */
+  private isTokenExpired(): boolean {
+    if (!this.cachedToken) return true;
+    // Token is considered expired if within the refresh buffer
+    return Date.now() >= (this.cachedToken.expiresAt - this.refreshBuffer);
+  }
+
+  /**
+   * Fetch a new admin token from Keycloak
+   */
+  private async fetchToken(): Promise<TokenResponse> {
+    const url = tokenEndpoint(this.config.keycloakUrl, 'master');
+
+    const body = new URLSearchParams({
+      grant_type: 'password',
+      client_id: 'admin-cli',
+      username: this.config.adminUsername,
+      password: this.config.adminPassword,
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    });
+
+    if (!response.ok) {
+      const error = await this.parseError(response);
+      throw new Error(`Token fetch failed: ${error.error_description || error.errorMessage || response.statusText}`);
+    }
+
+    return response.json() as Promise<TokenResponse>;
+  }
+
+  /**
+   * Make an authenticated request to the Keycloak Admin API
+   * Automatically handles token refresh and 401 retries
+   *
+   * @param url - Full URL to request
+   * @param options - Fetch options (method, body, etc.)
+   * @param retryOn401 - Whether to retry once on 401 (default true)
+   */
+  async request<T>(
+    url: string,
+    options: RequestInit = {},
+    retryOn401 = true
+  ): Promise<T> {
+    const token = await this.getToken();
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Handle 401 by refreshing token and retrying once
+    if (response.status === 401 && retryOn401) {
+      // Invalidate cached token
+      this.cachedToken = null;
+      // Retry with fresh token (no more retries)
+      return this.request<T>(url, options, false);
+    }
+
+    // Handle error responses
+    if (!response.ok) {
+      const error = await this.parseError(response);
+      throw new KeycloakApiError(
+        response.status,
+        error.error_description || error.errorMessage || response.statusText,
+        error
+      );
+    }
+
+    // Handle empty responses (e.g., 201 Created, 204 No Content)
+    const contentLength = response.headers.get('content-length');
+    if (contentLength === '0' || response.status === 204) {
+      return {} as T;
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  /**
+   * Make a POST request
+   */
+  async post<T>(url: string, body: unknown): Promise<T> {
+    return this.request<T>(url, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Make a GET request
+   */
+  async get<T>(url: string): Promise<T> {
+    return this.request<T>(url, { method: 'GET' });
+  }
+
+  /**
+   * Get the Location header from a response (for 201 Created)
+   * Useful for getting the internal ID after creating a resource
+   */
+  async postAndGetLocation(url: string, body: unknown): Promise<string | null> {
+    const token = await this.getToken();
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = await this.parseError(response);
+      throw new KeycloakApiError(
+        response.status,
+        error.error_description || error.errorMessage || response.statusText,
+        error
+      );
+    }
+
+    return response.headers.get('Location');
+  }
+
+  /**
+   * Parse error response from Keycloak
+   */
+  private async parseError(response: Response): Promise<KeycloakError> {
+    try {
+      return await response.json() as KeycloakError;
+    } catch {
+      return {
+        error: 'unknown_error',
+        error_description: response.statusText,
+      };
+    }
+  }
+
+  /**
+   * Get the configured realm
+   */
+  get realm(): string {
+    return this.config.realm;
+  }
+
+  /**
+   * Get the base Keycloak URL
+   */
+  get baseUrl(): string {
+    return this.config.keycloakUrl;
+  }
+}
+
+/**
+ * Custom error class for Keycloak API errors
+ */
+export class KeycloakApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly details?: KeycloakError
+  ) {
+    super(message);
+    this.name = 'KeycloakApiError';
+  }
+
+  /**
+   * Check if this is a "not found" error
+   */
+  isNotFound(): boolean {
+    return this.status === 404;
+  }
+
+  /**
+   * Check if this is a "conflict" error (resource already exists)
+   */
+  isConflict(): boolean {
+    return this.status === 409;
+  }
+
+  /**
+   * Check if this is an authorization error
+   */
+  isUnauthorized(): boolean {
+    return this.status === 401;
+  }
+}
+
+/**
+ * Create a KeycloakClient instance from environment variables
+ */
+export function createClientFromEnv(): KeycloakClient {
+  const url = process.env.KEYCLOAK_URL;
+  const realm = process.env.KEYCLOAK_REALM;
+  const username = process.env.KEYCLOAK_ADMIN_USERNAME;
+  const password = process.env.KEYCLOAK_ADMIN_PASSWORD;
+
+  if (!url || !realm || !username || !password) {
+    throw new Error(
+      'Missing required environment variables: KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_ADMIN_USERNAME, KEYCLOAK_ADMIN_PASSWORD'
+    );
+  }
+
+  return new KeycloakClient({
+    keycloakUrl: url,
+    realm,
+    adminUsername: username,
+    adminPassword: password,
+  });
+}
