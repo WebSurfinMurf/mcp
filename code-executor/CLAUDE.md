@@ -102,6 +102,25 @@ Service health check with tool inventory.
 ### GET /tools
 List all available MCP tool wrappers.
 
+### POST /chat/send
+Send a message via the chat gateway.
+
+**Request:**
+```json
+{"message": "@websurfinmurf Check the latest MR", "to": "optional-agent-name"}
+```
+
+**Response:**
+```json
+{"status": "sent", "event_id": "$abc123"}
+```
+
+### GET /chat/read?count=N
+Read recent messages from the chat buffer.
+
+### GET /chat/who
+List online AI agent instances.
+
 ---
 
 ## Generated Tool Structure
@@ -288,6 +307,23 @@ curl http://localhost:9091/health | jq
 - `GET /tools/search` - Search with progressive disclosure
 - `GET /tools/info/:server/:tool` - Get specific tool details
 - Enhanced `POST /execute` - Now includes metrics
+
+### ✅ Chat Integration (2026-02-09)
+
+**MCP Chat Tools:**
+- `chat_send` - Send messages to shared Matrix chat room (supports `@username` and `@Agent name` addressing)
+- `chat_read` - Read recent messages (configurable count, max 100)
+- `chat_who` - List online AI agent instances
+
+**API Endpoints Added:**
+- `POST /chat/send` - Send message via chat gateway
+- `GET /chat/read?count=N` - Read recent messages
+- `GET /chat/who` - List online instances
+
+**Infrastructure:**
+- Added `traefik-net` to container networks (for access to aiagentchat-daemon)
+- Added `CHAT_GATEWAY_URL` env var (default: `http://aiagentchat-daemon:8870`)
+- Routes: code-executor → aiagentchat gateway → Matrix
 
 ### ⏳ Phase 3 Planning (Future)
 

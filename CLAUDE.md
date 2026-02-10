@@ -52,8 +52,10 @@ Individual MCP Servers (7 services)
 - Sandboxed TypeScript/Python execution environment
 - Consumes MCP tools via proxy (http://mcp-proxy:9090)
 - Provides progressive disclosure API for token reduction (85-97%)
+- **Chat integration**: `chat_send`, `chat_read`, `chat_who` tools for Matrix inter-agent communication
 - Port: 9091 (HTTP API for code execution)
-- Used by Claude Code for multi-tool workflows
+- Networks: mcp-net, traefik-net
+- Used by Claude Code for multi-tool workflows and inter-session chat
 
 ---
 

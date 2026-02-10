@@ -40,6 +40,16 @@ interface SwarmDispatchArgs {
   timeout?: number;
 }
 
+interface ChatSendArgs {
+  message: string;
+  to?: string;
+}
+
+interface ChatReadArgs {
+  count?: number;
+}
+
+
 const server = new Server(
   {
     name: 'code-executor',
@@ -162,6 +172,46 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'reviewboard_health',
         description: 'Check health status of all AI Review Board nodes (Gemini, Codex, Claude).',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'chat_send',
+        description: 'Send a message to the shared Matrix chat room. Use this for inter-session communication with humans and AI agents. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent claude-admin"), or no prefix for broadcast to all.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description: 'The message to send. Include @username or @Agent name prefix to direct to a specific recipient.',
+            },
+            to: {
+              type: 'string',
+              description: 'Optional: target agent name for direct room delivery (e.g. "claude-admin"). If omitted, sends to the shared broadcast room.',
+            },
+          },
+          required: ['message'],
+        },
+      },
+      {
+        name: 'chat_read',
+        description: 'Read recent messages from the shared Matrix chat room. Returns messages from all participants (humans and AI agents).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            count: {
+              type: 'number',
+              description: 'Number of recent messages to retrieve (default: 20, max: 100)',
+              default: 20,
+            },
+          },
+        },
+      },
+      {
+        name: 'chat_who',
+        description: 'List online AI agent instances in the Matrix chat room. Shows instance names, types, and status.',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -319,6 +369,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: JSON.stringify(health, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'chat_send': {
+        const { message, to } = args as ChatSendArgs;
+
+        const body: Record<string, string> = { message };
+        if (to) body.to = to;
+
+        const response = await fetch(`${API_URL}/chat/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Chat send failed: ${result.error || JSON.stringify(result)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Message sent. Event ID: ${result.event_id}`,
+            },
+          ],
+        };
+      }
+
+      case 'chat_read': {
+        const { count = 20 } = args as ChatReadArgs;
+        const clampedCount = Math.min(Math.max(1, count), 100);
+
+        const response = await fetch(`${API_URL}/chat/read?count=${clampedCount}`);
+        const result = await response.json();
+
+        if (!result.messages || result.messages.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No recent messages.',
+              },
+            ],
+          };
+        }
+
+        const formatted = result.messages.map((msg: any) => {
+          const sender = msg.sender || msg.user_id || 'unknown';
+          const body = msg.body || msg.content?.body || '';
+          const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+          return `[${time}] ${sender}: ${body}`;
+        }).join('\n');
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Recent messages (${result.messages.length}):\n\n${formatted}`,
+            },
+          ],
+        };
+      }
+
+      case 'chat_who': {
+        const response = await fetch(`${API_URL}/chat/who`);
+        const result = await response.json();
+
+        if (!result.instances || result.instances.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No online instances found.',
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };

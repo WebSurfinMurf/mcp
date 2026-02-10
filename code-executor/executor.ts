@@ -37,12 +37,23 @@ interface SwarmDispatchRequest {
   working_dir?: string;
 }
 
+interface ChatSendRequest {
+  message: string;
+  to?: string;
+}
+
+interface ChatReadQuery {
+  count?: string;
+}
+
 interface SwarmResponse {
   success: boolean;
   result?: string;
   error?: string;
   metrics?: Record<string, any>;
 }
+
+const CHAT_GATEWAY_URL = process.env.CHAT_GATEWAY_URL || 'http://aiagentchat-daemon:8870';
 
 const REVIEWBOARD_NODES: Record<string, string> = {
   gemini: 'http://reviewboard-gemini:8080',
@@ -630,6 +641,69 @@ fastify.get('/reviewboard/health', async () => {
     healthyNodes: Object.values(results).filter(r => r.status === 'healthy').length,
     totalNodes: Object.keys(REVIEWBOARD_NODES).length
   };
+});
+
+/**
+ * POST /chat/send - Send a message via the chat gateway
+ */
+fastify.post<{ Body: ChatSendRequest }>('/chat/send', async (request, reply) => {
+  const { message, to } = request.body;
+
+  if (!message || typeof message !== 'string') {
+    return reply.code(400).send({ error: 'Message is required and must be a string' });
+  }
+
+  try {
+    const body: Record<string, string> = { message };
+    if (to) body.to = to;
+
+    const response = await fetch(`${CHAT_GATEWAY_URL}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return reply.code(response.status).send(result);
+    }
+
+    return result;
+  } catch (error: any) {
+    fastify.log.error({ error: error.message }, 'Chat send failed');
+    return reply.code(502).send({ error: `Failed to reach chat gateway: ${error.message}` });
+  }
+});
+
+/**
+ * GET /chat/read - Read recent messages from chat buffer
+ */
+fastify.get<{ Querystring: ChatReadQuery }>('/chat/read', async (request, reply) => {
+  const count = request.query.count || '20';
+
+  try {
+    const response = await fetch(`${CHAT_GATEWAY_URL}/read?count=${count}`);
+    const result = await response.json();
+    return result;
+  } catch (error: any) {
+    fastify.log.error({ error: error.message }, 'Chat read failed');
+    return reply.code(502).send({ error: `Failed to reach chat gateway: ${error.message}` });
+  }
+});
+
+/**
+ * GET /chat/who - List online chat instances
+ */
+fastify.get('/chat/who', async (_request, reply) => {
+  try {
+    const response = await fetch(`${CHAT_GATEWAY_URL}/who`);
+    const result = await response.json();
+    return result;
+  } catch (error: any) {
+    fastify.log.error({ error: error.message }, 'Chat who failed');
+    return reply.code(502).send({ error: `Failed to reach chat gateway: ${error.message}` });
+  }
 });
 
 // Start server
