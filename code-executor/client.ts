@@ -75,7 +75,18 @@ export async function callMCPTool<T = any>(
       );
     }
 
-    return mcpResponse.result as T;
+    // Unwrap MCP content envelope: { content: [{ type: 'text', text: '...' }] }
+    // Returns parsed JSON if text content, raw result otherwise
+    const result = mcpResponse.result;
+    if (result?.content?.[0]?.type === 'text') {
+      const text = result.content[0].text;
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as T;
+      }
+    }
+    return result as T;
   } catch (error: any) {
     if (error.name === 'AbortError') {
       throw new Error(`MCP tool call timed out after ${REQUEST_TIMEOUT}ms`);
