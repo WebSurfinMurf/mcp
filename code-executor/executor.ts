@@ -519,7 +519,7 @@ fastify.get<{
  * POST /reviewboard/dispatch - Dispatch prompt to AI Review Board node
  */
 fastify.post<{ Body: SwarmDispatchRequest }>('/reviewboard/dispatch', async (request, reply) => {
-  const { prompt, target, timeout = 300, working_dir = '/workspace' } = request.body;
+  const { prompt, target, timeout = 300, working_dir = '/workspace/administrator/projects' } = request.body;
 
   // Validation
   if (!prompt || typeof prompt !== 'string') {
@@ -533,6 +533,15 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/reviewboard/dispatch', async (req
   }
 
   const nodeUrl = REVIEWBOARD_NODES[target];
+
+  // Prepend workspace context so review board nodes understand the mount layout
+  const workspaceContext = [
+    `[Workspace context: The filesystem is mounted at /workspace with user home directories beneath it.`,
+    `Your working directory is ${working_dir}.`,
+    `All user project directories follow the pattern /workspace/{username}/projects/.`,
+    `Available users can be found by listing /workspace/.]`,
+  ].join(' ');
+  const augmentedPrompt = `${workspaceContext}\n\n${prompt}`;
 
   fastify.log.info({
     target,
@@ -548,7 +557,7 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/reviewboard/dispatch', async (req
     const response = await fetch(`${nodeUrl}/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, timeout, working_dir }),
+      body: JSON.stringify({ prompt: augmentedPrompt, timeout, working_dir }),
       signal: controller.signal,
     });
 

@@ -36,6 +36,7 @@ interface GetToolInfoArgs {
 interface SwarmDispatchArgs {
   prompt: string;
   target: 'gemini' | 'codex' | 'claude';
+  requestor?: string;
   timeout?: number;
 }
 
@@ -131,7 +132,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'dispatch_to_reviewboard',
-        description: 'Dispatch a prompt to an AI Review Board node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with access to the /workspace directory. Use this to delegate tasks to other AI agents.',
+        description: 'Dispatch a prompt to an AI Review Board node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with read-only access to all user home directories under /workspace/{username}/. Use this to delegate tasks to other AI agents.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -143,6 +144,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               enum: ['gemini', 'codex', 'claude'],
               description: 'Target AI: gemini (Google), codex (OpenAI), or claude (Anthropic)',
+            },
+            requestor: {
+              type: 'string',
+              description: 'Linux username of the requestor (e.g. "administrator", "websurfinmurf"). Sets the working directory to /workspace/{requestor}/projects/.',
+              default: 'administrator',
             },
             timeout: {
               type: 'number',
@@ -266,12 +272,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'dispatch_to_reviewboard': {
-        const { prompt, target, timeout = 900 } = args as SwarmDispatchArgs;
+        const { prompt, target, requestor = 'administrator', timeout = 900 } = args as SwarmDispatchArgs;
+        const working_dir = `/workspace/${requestor}/projects`;
 
         const response = await fetch(`${API_URL}/reviewboard/dispatch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, target, timeout }),
+          body: JSON.stringify({ prompt, target, timeout, working_dir }),
         });
 
         const result = await response.json();
