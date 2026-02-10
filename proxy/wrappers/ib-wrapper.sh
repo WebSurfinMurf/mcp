@@ -8,7 +8,7 @@ import sys
 import json
 import urllib.request
 
-MCP_ENDPOINT = "http://mcp-ib:8000/mcp"
+MCP_ENDPOINT = "http://mcp-ib-paper:8000/mcp"
 
 for line in sys.stdin:
     line = line.strip()

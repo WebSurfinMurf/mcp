@@ -179,7 +179,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'chat_send',
-        description: 'Send a message to the shared Matrix chat room. Use this for inter-session communication with humans and AI agents. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent claude-admin"), or no prefix for broadcast to all.',
+        description: 'Send a message to the shared Matrix chat room. Use this for inter-session communication with humans and AI agents. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent claude-administrator"), or no prefix for broadcast to all.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -189,7 +189,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             to: {
               type: 'string',
-              description: 'Optional: target agent name for direct room delivery (e.g. "claude-admin"). If omitted, sends to the shared broadcast room.',
+              description: 'Optional: target agent name for direct room delivery (e.g. "claude-administrator"). If omitted, sends to the shared broadcast room.',
             },
           },
           required: ['message'],
