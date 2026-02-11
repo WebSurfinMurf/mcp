@@ -53,7 +53,7 @@ interface SwarmResponse {
   metrics?: Record<string, any>;
 }
 
-const CHAT_GATEWAY_URL = process.env.CHAT_GATEWAY_URL || 'http://aiagentchat-daemon:8870';
+const CHAT_GATEWAY_URL = process.env.CHAT_GATEWAY_URL || 'http://aiagentchat-gateway:8870';
 
 const REVIEWBOARD_NODES: Record<string, string> = {
   gemini: 'http://reviewboard-gemini:8080',

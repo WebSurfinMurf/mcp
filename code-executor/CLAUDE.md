@@ -321,8 +321,8 @@ curl http://localhost:9091/health | jq
 - `GET /chat/who` - List online instances
 
 **Infrastructure:**
-- Added `traefik-net` to container networks (for access to aiagentchat-daemon)
-- Added `CHAT_GATEWAY_URL` env var (default: `http://aiagentchat-daemon:8870`)
+- Added `traefik-net` to container networks (for access to aiagentchat-gateway)
+- Added `CHAT_GATEWAY_URL` env var (default: `http://aiagentchat-gateway:8870`)
 - Routes: code-executor → aiagentchat gateway → Matrix
 
 ### ⏳ Phase 3 Planning (Future)
