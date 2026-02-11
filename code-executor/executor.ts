@@ -42,6 +42,13 @@ interface ChatSendRequest {
   to?: string;
 }
 
+interface GitLabCreateIssueRequest {
+  project_id: number;
+  title: string;
+  description?: string;
+  labels?: string[];
+}
+
 interface ChatReadQuery {
   count?: string;
 }
@@ -703,6 +710,66 @@ fastify.get('/chat/who', async (_request, reply) => {
   } catch (error: any) {
     fastify.log.error({ error: error.message }, 'Chat who failed');
     return reply.code(502).send({ error: `Failed to reach chat gateway: ${error.message}` });
+  }
+});
+
+/**
+ * POST /gitlab/create-issue - Create a GitLab issue
+ */
+fastify.post<{ Body: GitLabCreateIssueRequest }>('/gitlab/create-issue', async (request, reply) => {
+  const { project_id, title, description, labels } = request.body;
+
+  if (!project_id || !title) {
+    return reply.code(400).send({ error: 'project_id and title are required' });
+  }
+
+  const GITLAB_API_URL = process.env.GITLAB_API_URL || 'https://gitlab.ai-servicers.com/api/v4';
+  const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
+
+  if (!GITLAB_TOKEN) {
+    return reply.code(500).send({ error: 'GITLAB_TOKEN not configured on code-executor' });
+  }
+
+  try {
+    const body: Record<string, any> = { title };
+    if (description) body.description = description;
+    if (labels && labels.length > 0) body.labels = labels.join(',');
+
+    const response = await fetch(`${GITLAB_API_URL}/projects/${project_id}/issues`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'PRIVATE-TOKEN': GITLAB_TOKEN,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const result: any = await response.json();
+
+    if (!response.ok) {
+      fastify.log.error({ project_id, status: response.status, error: result }, 'GitLab issue creation failed');
+      return reply.code(response.status).send({
+        success: false,
+        error: result.message || result.error || JSON.stringify(result),
+      });
+    }
+
+    fastify.log.info({ project_id, iid: result.iid, url: result.web_url }, 'GitLab issue created');
+
+    return {
+      success: true,
+      issue_iid: result.iid,
+      issue_id: result.id,
+      issue_url: result.web_url,
+      title: result.title,
+      labels: result.labels,
+    };
+  } catch (error: any) {
+    fastify.log.error({ error: error.message }, 'GitLab API call failed');
+    return reply.code(502).send({
+      success: false,
+      error: `Failed to reach GitLab: ${error.message}`,
+    });
   }
 });
 

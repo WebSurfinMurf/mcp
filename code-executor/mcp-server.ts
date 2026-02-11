@@ -45,6 +45,13 @@ interface ChatSendArgs {
   to?: string;
 }
 
+interface CreateGitLabIssueArgs {
+  project_id: number;
+  title: string;
+  description?: string;
+  labels?: string[];
+}
+
 interface ChatReadArgs {
   count?: number;
 }
@@ -215,6 +222,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+      },
+      {
+        name: 'create_gitlab_issue',
+        description: 'Create a new issue on a GitLab project. Returns issue URL, ID, and labels. Use for alignment fixes, task tracking, and automated issue creation on project boards.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_id: {
+              type: 'number',
+              description: 'GitLab project ID (e.g., 35 for aiagentchat)',
+            },
+            title: {
+              type: 'string',
+              description: 'Issue title',
+            },
+            description: {
+              type: 'string',
+              description: 'Issue description in markdown format',
+            },
+            labels: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Labels to apply (e.g., ["alignment-fix"])',
+            },
+          },
+          required: ['project_id', 'title'],
         },
       },
     ],
@@ -457,6 +491,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 text: 'No online instances found.',
               },
             ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'create_gitlab_issue': {
+        const { project_id, title, description, labels } = args as CreateGitLabIssueArgs;
+
+        const response = await fetch(`${API_URL}/gitlab/create-issue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id, title, description, labels }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `GitLab issue creation failed: ${result.error || JSON.stringify(result)}`,
+              },
+            ],
+            isError: true,
           };
         }
 

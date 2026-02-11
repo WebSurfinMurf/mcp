@@ -3,6 +3,11 @@
 
 set -e
 
+# Load secrets (GitLab token needed for issue creation)
+set -a
+source "$HOME/projects/secrets/gitlab.env" 2>/dev/null || true
+set +a
+
 echo "🚀 Deploying MCP Code Executor..."
 echo "=================================="
 echo ""

@@ -26,6 +26,8 @@ services:
       - CODE_EXECUTOR_URL=http://localhost:3000
       - EXECUTION_TIMEOUT=300000  # 5 minutes
       - CHAT_GATEWAY_URL=http://aiagentchat-gateway:8870
+      - GITLAB_API_URL=http://gitlab.ai-servicers.com/api/v4
+      - GITLAB_TOKEN=${GITLAB_TOKEN_ADMIN}
 
     # Volumes
     volumes:
