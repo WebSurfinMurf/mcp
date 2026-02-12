@@ -1,7 +1,7 @@
 # MCP Code Executor - Project Documentation
 
-**Status**: ✅ Phase 2 Core Complete (2025-11-08)
-**Version**: 2.0.0-beta
+**Status**: ✅ Phase 3 RBAC Complete (2026-02-11)
+**Version**: 3.0.0
 **Location**: `/home/administrator/projects/mcp/code-executor/`
 
 ---
@@ -10,11 +10,11 @@
 
 **IMPORTANT: This is an MCP CLIENT, not an MCP server.**
 
-Sandboxed TypeScript/Python execution environment that CONSUMES MCP tools via the MCP proxy. Implements progressive disclosure pattern for 85-97% token reduction.
+Sandboxed TypeScript/Python execution environment that CONSUMES MCP tools via the MCP proxy. Single container serves both admin and developer users with role-based access control (RBAC).
 
 **Architecture Role:**
 ```
-Claude Code → Code Executor (client) → MCP Proxy → MCP Servers
+Admin/Developer → mcp-wrapper.sh → docker exec → mcp-server.ts → executor.ts → MCP Proxy → MCP Servers
 ```
 
 Code-executor provides:
@@ -22,12 +22,36 @@ Code-executor provides:
 - HTTP API for code execution (port 9091)
 - MCP client library for calling tools
 - Progressive disclosure API for token efficiency
+- **RBAC**: API key → role mapping with per-role server filtering
 
 Code-executor does NOT provide MCP tools - it consumes them from the proxy.
 
 **Production Status**:
 - ✅ Phase 1: Core infrastructure (code execution, wrappers, security) - PRODUCTION READY
 - ✅ Phase 2: Progressive disclosure API (search, tiered details, metrics) - CORE FEATURES COMPLETE
+- ✅ Phase 3: RBAC - Single executor, role-based access, eliminated mcp-code-executor-dev
+
+## RBAC Architecture
+
+### How It Works
+1. `mcp-wrapper.sh` runs on the HOST, detects linux group (administrators/developers), reads the appropriate API key file
+2. Passes the key via `CODE_EXECUTOR_API_KEY` env var into `docker exec`
+3. `mcp-server.ts` reads the key and calls `GET /roles?key=<key>` to get role config
+4. Tool list is filtered by `allowed_mcp_tools` before being sent to Claude Code CLI
+5. `executor.ts` validates `X-API-Key` header on every request and filters servers by role
+
+### Roles
+| Role | MCP Tools | MCP Servers | Notes |
+|------|:---------:|:-----------:|-------|
+| admin | All 10 | All (9+) | Full access |
+| developer | All 10 | 6 (postgres, playwright, openmemory, minio, ib, timescaledb) | No filesystem, memory, n8n, arangodb |
+
+### Files
+- `roles.json` — API key → role mapping, mounted as read-only volume at `/app/roles.json`
+- `mcp-wrapper.sh` — Host-side group detection + key injection
+- `secrets/code-executor.env` — Both API keys
+- `secrets/code-executor-admin.key` — Admin key (readable by administrators group)
+- `secrets/code-executor-developer.key` — Developer key (readable by developers group)
 
 ### Phase 1 Achievements ✅
 

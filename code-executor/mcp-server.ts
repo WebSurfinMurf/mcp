@@ -15,6 +15,33 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 const API_URL = process.env.CODE_EXECUTOR_URL || 'http://localhost:9091';
+const API_KEY = process.env.CODE_EXECUTOR_API_KEY || '';
+const SENDER_NAME = process.env.MCP_SENDER_NAME || 'unknown';
+
+// Cached role info from executor
+let cachedRole: { name: string; allowed_mcp_tools: string[]; allowed_servers: string[] } | null = null;
+
+async function getRole(): Promise<typeof cachedRole> {
+  if (cachedRole) return cachedRole;
+  if (!API_KEY) return null;
+  try {
+    const resp = await fetch(`${API_URL}/roles?key=${API_KEY}`);
+    if (resp.ok) {
+      cachedRole = await resp.json();
+    }
+  } catch {
+    // Role endpoint not available, allow all
+  }
+  return cachedRole;
+}
+
+// Helper to add API key header to all executor requests
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  if (extra) Object.assign(headers, extra);
+  return headers;
+}
 
 interface ExecuteCodeArgs {
   code: string;
@@ -69,10 +96,8 @@ const server = new Server(
   }
 );
 
-// List available tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
+// All tool definitions
+const ALL_TOOLS = [
       {
         name: 'execute_code',
         description: 'Execute TypeScript/JavaScript code with access to all MCP tools. Supports multi-tool workflows, data filtering, and complex operations. Returns execution output and metrics.',
@@ -186,7 +211,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'chat_send',
-        description: 'Send a message to the shared Matrix chat room. Use this for inter-session communication with humans and AI agents. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent claude-administrator"), or no prefix for broadcast to all.',
+        description: `Send a message to the shared Matrix chat room. YOUR IDENTITY is "${SENDER_NAME}" — you are NOT any of the agents listed in chat_who (those are separate agent containers). Messages you send appear as the gateway user, not your own Matrix account. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent claude-administrator"), or no prefix for broadcast to all.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -218,7 +243,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'chat_who',
-        description: 'List online AI agent instances in the Matrix chat room. Shows instance names, types, and status.',
+        description: `List online AI agent instances in the Matrix chat room. Shows instance names, types, and status. YOUR IDENTITY is "${SENDER_NAME}" — you are a CLI session, NOT one of the listed agent instances.`,
         inputSchema: {
           type: 'object',
           properties: {},
@@ -251,8 +276,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['project_id', 'title'],
         },
       },
-    ],
-  };
+];
+
+// List available tools (filtered by role)
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const role = await getRole();
+  let tools = ALL_TOOLS;
+  if (role && !role.allowed_mcp_tools.includes('*')) {
+    tools = ALL_TOOLS.filter(t => role.allowed_mcp_tools.includes(t.name));
+  }
+  return { tools };
 });
 
 // Handle tool calls
@@ -266,7 +299,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const response = await fetch(`${API_URL}/execute`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: apiHeaders(),
           body: JSON.stringify({ code, timeout }),
         });
 
@@ -305,7 +338,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (serverFilter) params.set('server', serverFilter);
         params.set('detail', detail);
 
-        const response = await fetch(`${API_URL}/tools/search?${params}`);
+        const response = await fetch(`${API_URL}/tools/search?${params}`, { headers: apiHeaders() });
         const result = await response.json();
 
         return {
@@ -324,7 +357,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const params = new URLSearchParams();
         params.set('detail', detail);
 
-        const response = await fetch(`${API_URL}/tools/info/${serverName}/${tool}?${params}`);
+        const response = await fetch(`${API_URL}/tools/info/${serverName}/${tool}?${params}`, { headers: apiHeaders() });
         const result = await response.json();
 
         return {
@@ -338,7 +371,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'list_mcp_tools': {
-        const response = await fetch(`${API_URL}/health`);
+        const response = await fetch(`${API_URL}/health`, { headers: apiHeaders() });
         const health = await response.json();
 
         return {
@@ -361,7 +394,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const response = await fetch(`${API_URL}/reviewboard/dispatch`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: apiHeaders(),
           body: JSON.stringify({ prompt, target, timeout, working_dir }),
         });
 
@@ -395,7 +428,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'reviewboard_health': {
-        const response = await fetch(`${API_URL}/reviewboard/health`);
+        const response = await fetch(`${API_URL}/reviewboard/health`, { headers: apiHeaders() });
         const health = await response.json();
 
         return {
@@ -416,7 +449,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const response = await fetch(`${API_URL}/chat/send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: apiHeaders(),
           body: JSON.stringify(body),
         });
 
@@ -448,7 +481,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { count = 20 } = args as ChatReadArgs;
         const clampedCount = Math.min(Math.max(1, count), 100);
 
-        const response = await fetch(`${API_URL}/chat/read?count=${clampedCount}`);
+        const response = await fetch(`${API_URL}/chat/read?count=${clampedCount}`, { headers: apiHeaders() });
         const result = await response.json();
 
         if (!result.messages || result.messages.length === 0) {
@@ -480,7 +513,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'chat_who': {
-        const response = await fetch(`${API_URL}/chat/who`);
+        const response = await fetch(`${API_URL}/chat/who`, { headers: apiHeaders() });
         const result = await response.json();
 
         if (!result.instances || result.instances.length === 0) {
@@ -509,7 +542,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const response = await fetch(`${API_URL}/gitlab/create-issue`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: apiHeaders(),
           body: JSON.stringify({ project_id, title, description, labels }),
         });
 

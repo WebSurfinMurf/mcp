@@ -8,6 +8,7 @@
 
 import Fastify from 'fastify';
 import { writeFile, unlink, readdir, readFile } from 'fs/promises';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -23,6 +24,47 @@ const fastify = Fastify({
 const PORT = parseInt(process.env.PORT || '3000');
 const EXECUTION_TIMEOUT = parseInt(process.env.EXECUTION_TIMEOUT || '300000'); // 5 minutes
 const MAX_OUTPUT_SIZE = 100 * 1024; // 100KB
+
+// --- RBAC: Load roles.json ---
+interface RoleConfig {
+  keys: Record<string, string>;
+  roles: Record<string, {
+    description: string;
+    allowed_servers: string[];
+    allowed_mcp_tools: string[];
+  }>;
+}
+
+interface ResolvedRole {
+  name: string;
+  description: string;
+  allowed_servers: string[];
+  allowed_mcp_tools: string[];
+}
+
+let ROLES_CONFIG: RoleConfig;
+try {
+  ROLES_CONFIG = JSON.parse(readFileSync('/app/roles.json', 'utf-8'));
+} catch {
+  // Fallback: allow all if roles.json not found (development mode)
+  ROLES_CONFIG = {
+    keys: {},
+    roles: { default: { description: 'Default (no roles.json)', allowed_servers: ['*'], allowed_mcp_tools: ['*'] } }
+  };
+}
+
+function getRoleForKey(apiKey: string): ResolvedRole | null {
+  if (!apiKey) return null;
+  const roleName = ROLES_CONFIG.keys[apiKey];
+  if (!roleName) return null;
+  const role = ROLES_CONFIG.roles[roleName];
+  if (!role) return null;
+  return { name: roleName, ...role };
+}
+
+function isServerAllowed(role: ResolvedRole, serverName: string): boolean {
+  return role.allowed_servers.includes('*') || role.allowed_servers.includes(serverName);
+}
 
 interface ExecuteRequest {
   code: string;
@@ -67,6 +109,25 @@ const REVIEWBOARD_NODES: Record<string, string> = {
   codex: 'http://reviewboard-codex:8080',
   claude: 'http://reviewboard-claude:8080',
 };
+
+// --- RBAC: API key validation hook ---
+fastify.addHook('onRequest', async (request, reply) => {
+  // Skip health check without key (basic health only)
+  if (request.url === '/health' && !request.headers['x-api-key']) return;
+
+  // /roles endpoint uses query param instead of header
+  if (request.url.startsWith('/roles')) return;
+
+  const apiKey = request.headers['x-api-key'] as string;
+  if (!apiKey) {
+    return reply.code(401).send({ error: 'API key required' });
+  }
+  const role = getRoleForKey(apiKey);
+  if (!role) {
+    return reply.code(403).send({ error: 'Invalid API key' });
+  }
+  (request as any).role = role;
+});
 
 interface ExecuteResponse {
   output: string;
@@ -265,9 +326,9 @@ async function executePython(code: string, timeout: number): Promise<ExecuteResp
 }
 
 /**
- * List available tool wrappers
+ * List available tool wrappers, optionally filtered by allowed servers
  */
-async function listAvailableTools() {
+async function listAvailableTools(allowedServers?: string[]) {
   const serversDir = '/workspace/servers';
   const tools: Record<string, string[]> = {};
 
@@ -276,6 +337,10 @@ async function listAvailableTools() {
 
     for (const server of servers) {
       if (server.isDirectory()) {
+        // Filter by allowed servers if specified
+        if (allowedServers && !allowedServers.includes('*') && !allowedServers.includes(server.name)) {
+          continue;
+        }
         const serverPath = join(serversDir, server.name);
         const files = await readdir(serverPath);
 
@@ -334,16 +399,21 @@ async function getToolInfo(server: string, toolName: string, detail: string = 'd
 /**
  * Search tools by keyword
  */
-async function searchTools(query: string, server?: string, detail: string = 'description'): Promise<ToolInfo[]> {
+async function searchTools(query: string, server?: string, detail: string = 'description', allowedServers?: string[]): Promise<ToolInfo[]> {
   const results: ToolInfo[] = [];
   const serversDir = '/workspace/servers';
 
   try {
-    const servers = server
+    let servers = server
       ? [server]
       : (await readdir(serversDir, { withFileTypes: true }))
           .filter(entry => entry.isDirectory())
           .map(entry => entry.name);
+
+    // Filter by allowed servers
+    if (allowedServers && !allowedServers.includes('*')) {
+      servers = servers.filter(s => allowedServers.includes(s));
+    }
 
     for (const srv of servers) {
       const serverPath = join(serversDir, srv);
@@ -444,29 +514,33 @@ fastify.post<{ Body: ExecuteRequest }>('/execute', async (request, reply) => {
 /**
  * GET /health - Health check
  */
-fastify.get('/health', async () => {
-  const tools = await listAvailableTools();
+fastify.get('/health', async (request) => {
+  const role = (request as any).role as ResolvedRole | undefined;
+  const tools = await listAvailableTools(role?.allowed_servers);
   const totalTools = Object.values(tools).reduce((sum, arr) => sum + arr.length, 0);
 
   return {
     status: 'healthy',
-    version: '1.0.0',
+    version: '2.0.0',
     uptime: process.uptime(),
     servers: Object.keys(tools).length,
     totalTools,
-    toolsByServer: tools
+    toolsByServer: tools,
+    ...(role ? { role: role.name } : {})
   };
 });
 
 /**
  * GET /tools - List available tools
  */
-fastify.get('/tools', async () => {
-  const tools = await listAvailableTools();
+fastify.get('/tools', async (request) => {
+  const role = (request as any).role as ResolvedRole;
+  const tools = await listAvailableTools(role.allowed_servers);
   return {
     servers: Object.keys(tools).length,
     totalTools: Object.values(tools).reduce((sum, arr) => sum + arr.length, 0),
-    tools
+    tools,
+    role: role.name
   };
 });
 
@@ -479,10 +553,11 @@ fastify.get('/tools', async () => {
  */
 fastify.get<{ Querystring: SearchToolsQuery }>('/tools/search', async (request, reply) => {
   const { query = '', server, detail = 'description' } = request.query;
+  const role = (request as any).role as ResolvedRole;
 
-  fastify.log.info({ query, server, detail }, 'Searching tools');
+  fastify.log.info({ query, server, detail, role: role.name }, 'Searching tools');
 
-  const results = await searchTools(query, server, detail);
+  const results = await searchTools(query, server, detail, role.allowed_servers);
 
   // Calculate token savings
   // Need to load full source for accurate comparison
@@ -520,6 +595,12 @@ fastify.get<{
 }>('/tools/info/:server/:tool', async (request, reply) => {
   const { server, tool } = request.params;
   const { detail = 'description' } = request.query;
+  const role = (request as any).role as ResolvedRole;
+
+  // Check server access
+  if (!isServerAllowed(role, server)) {
+    return reply.code(404).send({ error: 'Tool not found' });
+  }
 
   const info = await getToolInfo(server, tool, detail);
 
@@ -771,6 +852,21 @@ fastify.post<{ Body: GitLabCreateIssueRequest }>('/gitlab/create-issue', async (
       error: `Failed to reach GitLab: ${error.message}`,
     });
   }
+});
+
+/**
+ * GET /roles - Get role info for an API key (used by mcp-server.ts at startup)
+ */
+fastify.get<{ Querystring: { key?: string } }>('/roles', async (request, reply) => {
+  const key = request.query.key;
+  if (!key) {
+    return reply.code(400).send({ error: 'key query parameter required' });
+  }
+  const role = getRoleForKey(key);
+  if (!role) {
+    return reply.code(403).send({ error: 'Invalid key' });
+  }
+  return role;
 });
 
 // Start server

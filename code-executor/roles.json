@@ -1,0 +1,22 @@
+{
+  "keys": {
+    "c12c33645fb4a690776354e071b651a7cb4e17983c678d1b974e16416f94fcce": "admin",
+    "16637ac078272b6a8d51b865480375068faeacb39956ccd2c0289f315b6298c7": "developer"
+  },
+  "roles": {
+    "admin": {
+      "description": "Full access to all MCP servers and tools",
+      "allowed_servers": ["*"],
+      "allowed_mcp_tools": ["*"]
+    },
+    "developer": {
+      "description": "Limited access - no filesystem, memory, n8n, or arangodb servers",
+      "allowed_servers": ["postgres", "playwright", "openmemory", "minio", "ib", "timescaledb"],
+      "allowed_mcp_tools": [
+        "execute_code", "search_tools", "get_tool_info", "list_mcp_tools",
+        "dispatch_to_reviewboard", "reviewboard_health", "create_gitlab_issue",
+        "chat_send", "chat_read", "chat_who"
+      ]
+    }
+  }
+}

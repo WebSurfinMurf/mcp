@@ -19,7 +19,8 @@ const MCP_SERVERS = [
   'n8n',
   'timescaledb',
   'ib',
-  'arangodb'
+  'arangodb',
+  'openmemory'
 ];
 
 const OUTPUT_DIR = '/workspace/servers';

@@ -32,6 +32,7 @@ services:
     # Volumes
     volumes:
       - workspace-data:/workspace
+      - /home/administrator/projects/mcp/code-executor/roles.json:/app/roles.json:ro
       - /etc/localtime:/etc/localtime:ro
 
     # Security
