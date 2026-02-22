@@ -100,6 +100,7 @@ interface SwarmResponse {
   result?: string;
   error?: string;
   metrics?: Record<string, any>;
+  uploaded_files?: Array<{ key: string; browse_url: string; bucket?: string }>;
 }
 
 const CHAT_GATEWAY_URL = process.env.CHAT_GATEWAY_URL || 'http://aiagentchat-gateway:8870';
@@ -638,7 +639,12 @@ fastify.post<{ Body: SwarmDispatchRequest }>('/reviewboard/dispatch', async (req
     `[Workspace context: The filesystem is mounted at /workspace with user home directories beneath it.`,
     `Your working directory is ${working_dir}.`,
     `All user project directories follow the pattern /workspace/{username}/projects/.`,
-    `Available users can be found by listing /workspace/.]`,
+    `Available users can be found by listing /workspace/.`,
+    `To share files with the calling agent, write Python code that uses the minio_upload module:`,
+    `  import json; from minio_upload import upload_to_minio`,
+    `  result = upload_to_minio("filename.txt", content)`,
+    `  print(f"MINIO_UPLOAD:{json.dumps(result)}")`,
+    `Files are browsable at https://alist.ai-servicers.com/aichat-files/]`,
   ].join(' ');
   const augmentedPrompt = `${workspaceContext}\n\n${prompt}`;
 

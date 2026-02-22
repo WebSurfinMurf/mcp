@@ -53,6 +53,7 @@ Individual MCP Servers (7 services)
 - Consumes MCP tools via proxy (http://mcp-proxy:9090)
 - Provides progressive disclosure API for token reduction (85-97%)
 - **Chat integration**: `chat_send`, `chat_read`, `chat_who` tools for Matrix inter-agent communication
+- **Review Board dispatch**: `dispatch_to_reviewboard` sends prompts to Gemini/Codex/Claude nodes. Response includes `uploaded_files` array when agents upload artifacts to MinIO (`aichat-files` bucket). Browse at `https://alist.ai-servicers.com/aichat-files/reviewboard-{node}/`
 - Port: 9091 (HTTP API for code execution)
 - Networks: mcp-net, traefik-net
 - Used by Claude Code for multi-tool workflows and inter-session chat

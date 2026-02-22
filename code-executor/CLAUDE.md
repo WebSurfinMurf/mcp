@@ -126,6 +126,26 @@ Service health check with tool inventory.
 ### GET /tools
 List all available MCP tool wrappers.
 
+### POST /reviewboard/dispatch
+Dispatch a prompt to a Review Board node (Gemini, Codex, or Claude).
+
+**Response includes `uploaded_files`** when the agent uploads artifacts to MinIO:
+```json
+{
+  "success": true,
+  "result": "...",
+  "uploaded_files": [
+    {
+      "key": "reviewboard-gemini/report.md",
+      "browse_url": "https://alist.ai-servicers.com/aichat-files/reviewboard-gemini/report.md",
+      "bucket": "aichat-files"
+    }
+  ]
+}
+```
+
+Review board nodes have a `minio_upload.py` module that uploads via MCP proxy on `mcp-net`. Agents print `MINIO_UPLOAD:{json}` markers which `server.py` extracts into the `uploaded_files` field. Files auto-expire after 7 days.
+
 ### POST /chat/send
 Send a message via the chat gateway.
 
@@ -482,8 +502,5 @@ docker exec mcp-code-executor touch /workspace/test
 
 ---
 
-**Last Updated**: 2025-11-08
+**Last Updated**: 2026-02-21
 **Status**: ✅ **PRODUCTION READY**
-**Next**: Phase 2 - Progressive Disclosure API & Integration
-
-**Phase 1 Complete**: User requested to proceed with Phase 2 after Phase 1 is working and production-ready.

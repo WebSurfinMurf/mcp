@@ -174,7 +174,7 @@ const ALL_TOOLS = [
       },
       {
         name: 'dispatch_to_reviewboard',
-        description: 'Dispatch a prompt to an AI Review Board node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with read-only access to all user home directories under /workspace/{username}/. Use this to delegate tasks to other AI agents.',
+        description: 'Dispatch a prompt to an AI Review Board node (Gemini, Codex, or Claude) for execution. Each node runs in a Docker container with read-only access to all user home directories under /workspace/{username}/. Nodes can upload artifacts (generated code, reports, exports) to MinIO — check the uploaded_files array in the response for browse URLs. Use this to delegate tasks to other AI agents.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -421,6 +421,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 success: result.success,
                 result: result.result,
                 metrics: result.metrics,
+                ...(result.uploaded_files?.length ? { uploaded_files: result.uploaded_files } : {}),
               }, null, 2),
             },
           ],
