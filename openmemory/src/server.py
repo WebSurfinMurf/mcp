@@ -161,40 +161,39 @@ def handle_add_memory(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "text": text,
         "metadata": metadata,
         "app": OPENMEMORY_APP,
-        "infer": True  # Let mem0 extract entities/facts
+        "infer": False  # Store raw text (infer=True LLM step is broken)
     }
 
     result = call_openmemory_api("POST", "/api/v1/memories/", data=data)
+    if result is None:
+        return {
+            "success": False,
+            "message": "OpenMemory API returned null — memory may not have been stored"
+        }
     return {
         "success": True,
-        "memory_id": result.get("id"),
+        "memory_id": result.get("id") if isinstance(result, dict) else None,
         "message": f"Memory added successfully with category '{category}'",
         "result": result
     }
 
 def handle_search_memories(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Search memories semantically"""
+    """Search memories using semantic vector search"""
     query = arguments.get("query")
     limit = arguments.get("limit", 10)
-    category = arguments.get("category")
 
-    # Build query parameters
-    params = {
+    data = {
+        "query": query,
         "user_id": OPENMEMORY_USER,
-        "search_query": query,
-        "size": limit
+        "limit": limit,
     }
 
-    if category:
-        params["categories"] = category
-
-    result = call_openmemory_api("GET", "/api/v1/memories/", params=params)
+    result = call_openmemory_api("POST", "/api/v1/memories/search", data=data)
 
     return {
         "success": True,
-        "count": len(result.get("items", [])),
-        "memories": result.get("items", []),
-        "total": result.get("total", 0)
+        "count": result.get("count", 0),
+        "memories": result.get("results", []),
     }
 
 def handle_list_memories(arguments: Dict[str, Any]) -> Dict[str, Any]:
