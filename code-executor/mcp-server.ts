@@ -211,7 +211,7 @@ const ALL_TOOLS = [
       },
       {
         name: 'chat_send',
-        description: `Send a message to the shared Matrix chat room. YOUR IDENTITY is "${SENDER_NAME}" — you are NOT any of the agents listed in chat_who (those are separate agent containers). Messages you send appear as the gateway user, not your own Matrix account. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent claude-administrator"), or no prefix for broadcast to all.`,
+        description: `Send a message to the shared Matrix chat room. YOUR IDENTITY is "${SENDER_NAME}" — you are NOT any of the agents listed in chat_who (those are separate agent containers). Messages you send appear as the gateway user, not your own Matrix account. Addressing: "@username" for humans (e.g. "@websurfinmurf"), "@Agent name" for AI agents (e.g. "@Agent agents-cli-claude-administrator"), or no prefix for broadcast to all.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -221,7 +221,7 @@ const ALL_TOOLS = [
             },
             to: {
               type: 'string',
-              description: 'Optional: target agent name for direct room delivery (e.g. "claude-administrator"). If omitted, sends to the shared broadcast room.',
+              description: 'Optional: target agent name for direct room delivery (e.g. "agents-cli-claude-administrator"). If omitted, sends to the shared broadcast room.',
             },
           },
           required: ['message'],
