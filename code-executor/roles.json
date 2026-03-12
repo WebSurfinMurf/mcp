@@ -11,7 +11,7 @@
     },
     "developer": {
       "description": "Limited access - no filesystem, memory, n8n, or arangodb servers",
-      "allowed_servers": ["postgres", "playwright", "openmemory", "minio", "ib", "timescaledb"],
+      "allowed_servers": ["postgres", "playwright", "openmemory", "minio", "ib", "timescaledb", "vikunja"],
       "allowed_mcp_tools": [
         "execute_code", "search_tools", "get_tool_info", "list_mcp_tools",
         "dispatch_to_reviewboard", "reviewboard_health", "create_gitlab_issue",

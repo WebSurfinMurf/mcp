@@ -60,6 +60,10 @@
     "keycloak": {
       "command": "/wrappers/keycloak-wrapper.sh",
       "args": []
+    },
+    "vikunja": {
+      "command": "/wrappers/vikunja-wrapper.sh",
+      "args": []
     }
   }
 }
