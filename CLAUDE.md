@@ -4,10 +4,10 @@
 Complete Model Context Protocol (MCP) integration providing 67+ tools across 10 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 
 **Quick Stats:**
-- **MCP Servers**: 12 configured (10 currently active)
-- **Active Servers**: filesystem, postgres, playwright, minio, n8n, arangodb, openmemory, tradingview, gemini-image
+- **MCP Servers**: 13 configured (11 currently active)
+- **Active Servers**: filesystem, postgres, playwright, minio, n8n, arangodb, openmemory, tradingview, gemini-image, vikunja
 - **Inactive Servers**: memory, timescaledb, ib (containers not running)
-- **Total Tools**: 66 active tools (84+ when all servers running)
+- **Total Tools**: 70 active tools (88+ when all servers running)
 - **Middleware**: OpenAI-compatible proxy with automatic tool execution loop
 - **Architecture**: TBXark MCP Proxy + Custom FastAPI Middleware
 - **Proxy Endpoint**: `http://localhost:9090` (all servers accessible via `/[server]/mcp`)
@@ -143,6 +143,19 @@ Individual MCP Servers (7 services)
 - Web URL: `https://nginx.ai-servicers.com/generated-images/`
 - Status: Fully operational (deployed 2025-12-07)
 - Use Cases: Generate culturally-accurate images, custom imagery stock photos can't provide
+
+### ✅ Vikunja (4 tools) - ✅ DEPLOYED
+- Self-hosted task management with per-user JWT authentication
+- Tools: create_task, list_tasks, update_task, get_task
+- Connection: vikunja:3456
+- Backend: Vikunja API v0.24+ with project-based organization
+- Container: mcp-vikunja (port 8000)
+- Networks: mcp-net, pipecat-net
+- Architecture: FastMCP streamable-http server with per-user JWT minting
+- Status: Fully operational (deployed 2026-03-12)
+- Features: Auto-categorization (Inbox/Work/Tech/Learning/Home/Friends), priority 0-5, due dates
+- Integration: Pipecat voice assistant triggers ("add task", "my tasks", "complete task")
+- Documentation: `projects/mcp/vikunja/docs/context/`
 
 ### 📊 TradingView (8 tools) - ✅ DEPLOYED
 - Real-time market data, technical analysis, and trading signals
@@ -474,5 +487,32 @@ docker logs litellm -f
 
 ---
 
-**Project Status**: ✅ Production (12 servers, 72+ tools, automatic execution)
-**Last Updated**: 2025-12-07 (Added gemini-image for AI image generation)
+---
+
+## Git Structure
+
+This project is a **GitHub monorepo** (`WebSurfinMurf/mcp`). All MCP server subdirectories are tracked in this single repository.
+
+### Repository Layout
+```
+projects/mcp/                  ← git root (github.com/WebSurfinMurf/mcp)
+├── proxy/                     ← TBXark MCP Proxy
+├── middleware/                ← OpenAI-compatible middleware
+├── code-executor/             ← MCP client for Claude Code
+├── openmemory/                ← OpenMemory MCP server
+├── vikunja/                   ← Vikunja task management MCP server
+├── archive/                   ← Evaluation/pilot artifacts
+├── CLAUDE.md                  ← This file
+└── ...
+```
+
+### Rules
+- **One repo, one remote**: All subdirectories commit to `origin` (GitHub). Do NOT create nested `.git` directories or gitlinks.
+- **No submodules**: Every MCP server directory is a plain subdirectory. If a service needs its own CI, use path-filtered triggers (not separate repos).
+- **GitLab projects** (e.g., `administrators/mcp-vikunja`) exist for board/issue tracking only — code lives here in the GitHub monorepo.
+- **Branching**: Feature branches at repo root level (e.g., `feature/vikunja-priority`), not per-subdirectory.
+
+---
+
+**Project Status**: ✅ Production (13 servers, 70+ tools, automatic execution)
+**Last Updated**: 2026-03-12 (Added vikunja MCP server, merged into monorepo)

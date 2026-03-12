@@ -1,0 +1,28 @@
+services:
+  mcp-vikunja:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-vikunja:latest
+    container_name: mcp-vikunja
+    restart: unless-stopped
+    networks:
+      - vikunja_vikunja-net
+      - mcp-net
+    environment:
+      - VIKUNJA_API_URL=${VIKUNJA_API_URL}
+      - VIKUNJA_SERVICE_USERNAME=${VIKUNJA_SERVICE_USERNAME}
+      - VIKUNJA_SERVICE_PASSWORD=${VIKUNJA_SERVICE_PASSWORD}
+      - VIKUNJA_JWT_SECRET=${VIKUNJA_JWT_SECRET}
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-X", "POST", "http://localhost:8000/mcp", "-H", "Content-Type: application/json", "-H", "Accept: application/json, text/event-stream", "-d", "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"health\",\"version\":\"1.0\"}}}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  vikunja_vikunja-net:
+    external: true
+  mcp-net:
+    external: true
