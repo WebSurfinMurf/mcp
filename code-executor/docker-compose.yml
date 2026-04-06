@@ -35,6 +35,11 @@ services:
       - workspace-data:/workspace
       - /home/administrator/projects/mcp/code-executor/roles.json:/app/roles.json:ro
       - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    # Docker socket access (GID 127 = docker group on host)
+    group_add:
+      - "127"
 
     # Security
     security_opt:

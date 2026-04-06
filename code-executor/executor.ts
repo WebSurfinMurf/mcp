@@ -91,6 +91,12 @@ interface GitLabCreateIssueRequest {
   labels?: string[];
 }
 
+interface GitLabCreateBoardRequest {
+  project_path: string;
+  board_name: string;
+  label_name?: string;
+}
+
 interface ChatReadQuery {
   count?: string;
 }
@@ -856,6 +862,209 @@ fastify.post<{ Body: GitLabCreateIssueRequest }>('/gitlab/create-issue', async (
     return reply.code(502).send({
       success: false,
       error: `Failed to reach GitLab: ${error.message}`,
+    });
+  }
+});
+
+/**
+ * POST /gitlab/create-board - Create a GitLab board with standard columns and label scoping
+ * Works around GitLab CE limitation (1 board via API) using direct SQL.
+ */
+fastify.post<{ Body: GitLabCreateBoardRequest }>('/gitlab/create-board', async (request, reply) => {
+  const { project_path, board_name, label_name } = request.body;
+
+  if (!project_path || !board_name) {
+    return reply.code(400).send({ error: 'project_path and board_name are required' });
+  }
+
+  // Input validation to prevent SQL injection
+  if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/.test(project_path)) {
+    return reply.code(400).send({ error: 'project_path must be in format "group/project" with alphanumeric characters, hyphens, and underscores only' });
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(board_name)) {
+    return reply.code(400).send({ error: 'board_name must contain only alphanumeric characters, hyphens, and underscores' });
+  }
+
+  const effectiveLabel = label_name || `enhancement::${board_name}`;
+  if (!/^[a-zA-Z0-9:_-]+$/.test(effectiveLabel)) {
+    return reply.code(400).send({ error: 'label_name must contain only alphanumeric characters, colons, hyphens, and underscores' });
+  }
+
+  const GITLAB_API_URL = process.env.GITLAB_API_URL || 'https://gitlab.ai-servicers.com/api/v4';
+  const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
+
+  if (!GITLAB_TOKEN) {
+    return reply.code(500).send({ error: 'GITLAB_TOKEN not configured on code-executor' });
+  }
+
+  const gitlabHeaders = {
+    'Content-Type': 'application/json',
+    'PRIVATE-TOKEN': GITLAB_TOKEN,
+  };
+
+  // Extract numeric ID from gitlab-psql output (strips "INSERT 0 1" command tags and whitespace)
+  const parsePsqlId = (output: string): string => {
+    const match = output.match(/^\s*(\d+)/);
+    return match ? match[1] : '';
+  };
+
+  const steps: string[] = [];
+
+  try {
+    // Step 1: Get project info via API
+    const encodedPath = encodeURIComponent(project_path);
+    const projectResp = await fetch(`${GITLAB_API_URL}/projects/${encodedPath}`, { headers: gitlabHeaders });
+    if (!projectResp.ok) {
+      return reply.code(404).send({ error: `Project '${project_path}' not found` });
+    }
+    const project: any = await projectResp.json();
+    const projectId = project.id;
+    const groupId = project.namespace.id;
+    steps.push(`Project ID: ${projectId}`);
+
+    // Step 2: Create enhancement label if missing
+    let labelExists = false;
+
+    // Check project labels
+    const projLabelsResp = await fetch(`${GITLAB_API_URL}/projects/${projectId}/labels?per_page=100`, { headers: gitlabHeaders });
+    const projLabels: any[] = await projLabelsResp.json();
+    if (projLabels.find((l: any) => l.name === effectiveLabel)) {
+      labelExists = true;
+      steps.push(`Label '${effectiveLabel}' already exists (project-level)`);
+    }
+
+    // Check group labels
+    if (!labelExists) {
+      const grpLabelsResp = await fetch(`${GITLAB_API_URL}/groups/${groupId}/labels?per_page=100`, { headers: gitlabHeaders });
+      const grpLabels: any[] = await grpLabelsResp.json();
+      if (grpLabels.find((l: any) => l.name === effectiveLabel)) {
+        labelExists = true;
+        steps.push(`Label '${effectiveLabel}' already exists (group-level)`);
+      }
+    }
+
+    if (!labelExists) {
+      const createLabelResp = await fetch(`${GITLAB_API_URL}/projects/${projectId}/labels`, {
+        method: 'POST',
+        headers: gitlabHeaders,
+        body: JSON.stringify({ name: effectiveLabel, color: '#6699cc', description: `Board scope: ${board_name}` }),
+      });
+      if (!createLabelResp.ok) {
+        const err = await createLabelResp.json();
+        return reply.code(500).send({ error: `Failed to create label: ${JSON.stringify(err)}` });
+      }
+      steps.push(`Created label '${effectiveLabel}'`);
+    }
+
+    // Step 3: Create board via SQL if missing (CE limitation — API only supports 1 board)
+    const boardCheckCmd = `docker exec gitlab gitlab-psql -t -c "SELECT id FROM boards WHERE project_id = ${projectId} AND name = '${board_name}';"`;
+    const boardCheck = await execAsync(boardCheckCmd, { timeout: 10000 });
+    let boardId = parsePsqlId(boardCheck.stdout);
+
+    if (!boardId) {
+      const boardInsertCmd = `docker exec gitlab gitlab-psql -t -c "INSERT INTO boards (project_id, name, created_at, updated_at) VALUES (${projectId}, '${board_name}', NOW(), NOW()) RETURNING id;"`;
+      const boardInsert = await execAsync(boardInsertCmd, { timeout: 10000 });
+      boardId = parsePsqlId(boardInsert.stdout);
+      steps.push(`Created board '${board_name}' (ID: ${boardId})`);
+    } else {
+      steps.push(`Board '${board_name}' already exists (ID: ${boardId})`);
+    }
+
+    if (!boardId) {
+      return reply.code(500).send({ error: 'Failed to create or find board — empty board ID from SQL' });
+    }
+
+    // Step 4: Add standard columns if none exist
+    const listsResp = await fetch(`${GITLAB_API_URL}/projects/${encodedPath}/boards/${boardId}/lists`, { headers: gitlabHeaders });
+    const lists: any[] = await listsResp.json();
+
+    if (lists.length > 0) {
+      steps.push(`Board already has ${lists.length} columns — skipping column creation`);
+    } else {
+      // Get group-level label IDs for columns
+      const grpLabelsResp = await fetch(`${GITLAB_API_URL}/groups/${groupId}/labels?per_page=100`, { headers: gitlabHeaders });
+      const grpLabels: any[] = await grpLabelsResp.json();
+
+      const columnNames = ['backlog', 'ready', 'in-progress', 'review', 'blocked', 'done'];
+      const createdCols: string[] = [];
+      const failedCols: string[] = [];
+
+      for (const colName of columnNames) {
+        const colLabel = grpLabels.find((l: any) => l.name === colName);
+        if (colLabel) {
+          const colResp = await fetch(`${GITLAB_API_URL}/projects/${encodedPath}/boards/${boardId}/lists`, {
+            method: 'POST',
+            headers: gitlabHeaders,
+            body: JSON.stringify({ label_id: colLabel.id }),
+          });
+          if (colResp.ok) {
+            createdCols.push(colName);
+          } else {
+            failedCols.push(colName);
+          }
+        } else {
+          failedCols.push(`${colName} (label not found)`);
+        }
+      }
+      steps.push(`Created columns: ${createdCols.join(', ')}`);
+      if (failedCols.length > 0) {
+        steps.push(`Failed columns: ${failedCols.join(', ')}`);
+      }
+    }
+
+    // Step 5: Scope board to label via SQL (LX extension — board_labels table)
+    // Find label ID via SQL (need the DB label ID, not API ID)
+    const labelIdCmd = `docker exec gitlab gitlab-psql -t -c "SELECT id FROM labels WHERE title = '${effectiveLabel}' AND project_id = ${projectId};"`;
+    const labelIdResult = await execAsync(labelIdCmd, { timeout: 10000 });
+    let labelId = parsePsqlId(labelIdResult.stdout);
+
+    if (!labelId) {
+      // Try group labels
+      const groupNsCmd = `docker exec gitlab gitlab-psql -t -c "SELECT namespace_id FROM projects WHERE id = ${projectId};"`;
+      const groupNsResult = await execAsync(groupNsCmd, { timeout: 10000 });
+      const nsId = parsePsqlId(groupNsResult.stdout);
+      if (nsId) {
+        const grpLabelIdCmd = `docker exec gitlab gitlab-psql -t -c "SELECT id FROM labels WHERE title = '${effectiveLabel}' AND group_id = ${nsId};"`;
+        const grpLabelIdResult = await execAsync(grpLabelIdCmd, { timeout: 10000 });
+        labelId = parsePsqlId(grpLabelIdResult.stdout);
+      }
+    }
+
+    if (!labelId) {
+      steps.push(`WARNING: Could not find label ID for '${effectiveLabel}' — board not scoped`);
+    } else {
+      // Check if already scoped
+      const scopeCheckCmd = `docker exec gitlab gitlab-psql -t -c "SELECT id FROM board_labels WHERE board_id = ${boardId} AND label_id = ${labelId};"`;
+      const scopeCheck = await execAsync(scopeCheckCmd, { timeout: 10000 });
+      const existingScope = parsePsqlId(scopeCheck.stdout);
+
+      if (existingScope) {
+        steps.push(`Board already scoped to '${effectiveLabel}'`);
+      } else {
+        const scopeInsertCmd = `docker exec gitlab gitlab-psql -c "INSERT INTO board_labels (board_id, label_id, project_id) VALUES (${boardId}, ${labelId}, ${projectId});"`;
+        await execAsync(scopeInsertCmd, { timeout: 10000 });
+        steps.push(`Board scoped to label '${effectiveLabel}'`);
+      }
+    }
+
+    fastify.log.info({ project_path, board_name, boardId, steps }, 'GitLab board created');
+
+    return {
+      success: true,
+      project_path,
+      project_id: projectId,
+      board_name,
+      board_id: parseInt(boardId),
+      label: effectiveLabel,
+      steps,
+    };
+
+  } catch (error: any) {
+    fastify.log.error({ error: error.message, project_path, board_name }, 'GitLab board creation failed');
+    return reply.code(500).send({
+      success: false,
+      error: error.message,
+      steps,
     });
   }
 });

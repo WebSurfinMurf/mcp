@@ -15,7 +15,7 @@
       "allowed_mcp_tools": [
         "execute_code", "search_tools", "get_tool_info", "list_mcp_tools",
         "dispatch_to_reviewboard", "reviewboard_health", "create_gitlab_issue",
-        "chat_send", "chat_read", "chat_who"
+        "create_gitlab_board", "chat_send", "chat_read", "chat_who"
       ]
     }
   }

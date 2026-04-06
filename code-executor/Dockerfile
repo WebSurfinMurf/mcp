@@ -9,6 +9,7 @@ RUN apk add --no-cache \
     py3-pip \
     curl \
     bash \
+    docker-cli \
     && ln -sf python3 /usr/bin/python
 
 # Use existing node user (UID 1000, GID 1000)

@@ -79,6 +79,12 @@ interface CreateGitLabIssueArgs {
   labels?: string[];
 }
 
+interface CreateGitLabBoardArgs {
+  project_path: string;
+  board_name: string;
+  label_name?: string;
+}
+
 interface ChatReadArgs {
   count?: number;
 }
@@ -274,6 +280,28 @@ const ALL_TOOLS = [
             },
           },
           required: ['project_id', 'title'],
+        },
+      },
+      {
+        name: 'create_gitlab_board',
+        description: 'Create a GitLab issue board with standard columns (backlog, ready, in-progress, review, blocked, done) and label scoping. Works around GitLab CE limitation of 1 board via API by using direct SQL. Idempotent — safe to call multiple times.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_path: {
+              type: 'string',
+              description: 'GitLab project path in "group/project" format (e.g., "administrators/pipecat", "developers/stocktrader")',
+            },
+            board_name: {
+              type: 'string',
+              description: 'Name for the board (e.g., "initial", "trading-integration", "crossproject")',
+            },
+            label_name: {
+              type: 'string',
+              description: 'Label to scope the board to. Defaults to "enhancement::<board_name>" if omitted.',
+            },
+          },
+          required: ['project_path', 'board_name'],
         },
       },
 ];
@@ -555,6 +583,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               {
                 type: 'text',
                 text: `GitLab issue creation failed: ${result.error || JSON.stringify(result)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'create_gitlab_board': {
+        const { project_path, board_name, label_name } = args as CreateGitLabBoardArgs;
+
+        const response = await fetch(`${API_URL}/gitlab/create-board`, {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({ project_path, board_name, label_name }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `GitLab board creation failed: ${result.error || JSON.stringify(result)}`,
               },
             ],
             isError: true,
