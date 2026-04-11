@@ -49,8 +49,7 @@ services:
     volumes:
       - ./config/config.ini.tmpl:/home/ibgateway/ibc/config.ini.tmpl:ro
       - ./config/run_socat.sh:/home/ibgateway/scripts/run_socat.sh:ro
-      # NOTE: Cannot mount Jts directory - would override required template files
-      # ibg.xml is encrypted and requires manual VNC config after each restart
+      - ./config/jts.ini.tmpl:/home/ibgateway/Jts/jts.ini.tmpl:ro
     networks:
       mcp-ib-paper-net:
         aliases:
