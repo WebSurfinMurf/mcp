@@ -239,3 +239,38 @@ Negative tests:
 | Audit log | `journalctl -t mcp-dispatcher -t mcp-code-executor` |
 
 Read `MCPSTANDARD.md` first, then this file. The standard has the *what*; this file has the *what-needs-to-change-on-this-particular-machine*.
+
+---
+
+## 10. Migration completion record (2026-04-27)
+
+Server-side migration executed by Claude Code session `b026c92a-3cb0-490d-8e1a-5fc153c37100`.
+
+### Steps completed
+- **Step 1** — keyfile ownership/naming: `code-executor-admin.key` → `code-executor-administrator.key` with backwards-compat symlink; both keyfiles now `0640 root:<role-group>`. Backups at `/tmp/codex-keys-backup-1777287956`.
+- **Step 2** — `mcp-server.ts` reads `MCP_KEY_FILE` (path) when set, falls back to `CODE_EXECUTOR_API_KEY` for compat. `docker-compose.yml` mounts `/home/administrator/projects/secrets` RO at `/run/secrets`.
+- **Step 3** — `/usr/local/bin/mcp-dispatcher` installed; allow-list = `code-executor` only.
+- **Step 4** — `/usr/local/bin/mcp-code-executor` installed (see deviations below).
+- **Step 5** — both `~/.claude.json` files updated to point at `/usr/local/bin/mcp-code-executor`. Verification of `chat_who` requires Claude Code restart in each session.
+- **Step 6** — per-user wrappers renamed `mcp-wrapper.sh.deprecated.2026-04-27` (NOT deleted; remove after ~1 week of stable operation).
+- **Step 7** — host port `9091:3000` removed; verified no live consumers.
+- **Step 9** — `code-executor/CLAUDE.md` and `projects/CLAUDE.md` updated to point at MCPSTANDARD as canonical contract.
+
+### Steps deferred (not in scope for this session — laptop work)
+- **Step 8** — laptop side. Each laptop must generate `id_ed25519_mcp`, add the multiplexing block to `~/.ssh/config`, and have its pubkey appended to the appropriate user's `authorized_keys` with `restrict,command="/usr/local/bin/mcp-dispatcher",no-user-rc`. Then run all five §8 verification tests.
+
+### Deviations from vanilla MCPSTANDARD §3c (worth promoting back into the standard)
+
+1. **`in_group()` must check primary group too.** The standard's awk-based check only walks the supplementary member list (4th field of `getent group`). `administrator` has `administrators` as its **primary** group with empty supplementary list, so the standard's check returns false. Patched wrapper adds `[[ "$(id -gn "$REAL_USER")" == "$1" ]] && return 0` first.
+
+2. **`docker exec --user 1000:<role-gid>` for role-bound keyfile read.** The standard mounts `secrets/` RO at `/run/secrets` but doesn't address how UID 1000 (`node`) reads `0640 root:<role-group>` files. Migration doc step 2 considered `chmod 0644` or `group_add`, but **both leak both keys to user-supplied code via `execute_code`** (which runs in the same container as `node:node`). Solution: `docker exec --user "1000:${ROLE_GID}"` so mcp-server.ts runs as `1000:<role-gid>` (admin = 2000, developer = 3000). The short-lived MCP exec subprocess can read its role's keyfile only; the long-lived `executor.ts` (`1000:1000`) can read neither, so user code via `execute_code` cannot harvest either key.
+
+   Verified 2026-04-27:
+   - `docker exec --user 1000:2000` reads admin key, BLOCKED on developer key.
+   - `docker exec --user 1000:3000` reads developer key, BLOCKED on admin key.
+   - `docker exec` (default 1000:1000) BLOCKED on both keys.
+
+### Verification still owed (next Claude Code restart)
+- `claude mcp list` shows `code-executor: Connected` for both administrator and websurfinmurf.
+- `mcp__code-executor__chat_who` returns `administrator@linuxserver-local` and `websurfinmurf@linuxserver-local` respectively.
+- `journalctl -t mcp-code-executor` shows one ACCEPT-equivalent line per invocation (`user=... role=... sender=...`).

@@ -1,5 +1,7 @@
 # MCP Infrastructure - Executive Summary
 
+> 🔀 **Session history (refocus)**: See [docs/refocus/INDEX.md](docs/refocus/INDEX.md) for incoming briefs and outbound spawns.
+
 ## Overview
 Complete Model Context Protocol (MCP) integration providing 67+ tools across 10 specialized servers. Deployed with dual-transport architecture (HTTP proxy for Open WebUI, SSE/stdio for CLI tools) and automatic tool execution middleware.
 

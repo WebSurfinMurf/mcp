@@ -13,9 +13,27 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { readFileSync } from 'node:fs';
 
 const API_URL = process.env.CODE_EXECUTOR_URL || 'http://localhost:9091';
-const API_KEY = process.env.CODE_EXECUTOR_API_KEY || '';
+
+// MCPSTANDARD §3a: prefer MCP_KEY_FILE (path) over raw key in env, so the key
+// bytes never appear in /proc/<pid>/environ. Fall back to CODE_EXECUTOR_API_KEY
+// for backwards compatibility during cutover.
+function loadApiKey(): string {
+  const keyFile = process.env.MCP_KEY_FILE;
+  if (keyFile) {
+    try {
+      return readFileSync(keyFile, 'utf8').replace(/\n+$/, '');
+    } catch (err) {
+      console.error(`MCP_KEY_FILE set but unreadable: ${keyFile}: ${err}`);
+      process.exit(2);
+    }
+  }
+  return process.env.CODE_EXECUTOR_API_KEY || '';
+}
+
+const API_KEY = loadApiKey();
 const SENDER_NAME = process.env.MCP_SENDER_NAME || 'unknown';
 
 // Cached role info from executor

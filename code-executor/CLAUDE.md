@@ -1,8 +1,19 @@
+---
+context-save:
+  files: [architecture, interfaces, security, operations, gotchas]
+  gotchas_via_memory: false
+---
+
 # MCP Code Executor - Project Documentation
 
-**Status**: ✅ Phase 3 RBAC Complete (2026-02-11)
+> 🔀 **Session history (refocus)**: See [docs/refocus/INDEX.md](docs/refocus/INDEX.md) for incoming briefs and outbound spawns.
+> 📚 **Context blueprint**: [docs/context/](docs/context/) — terse architecture / interfaces / security / operations / gotchas reference for AI agent continuity.
+
+**Status**: ✅ Phase 3 RBAC Complete (2026-02-11) · ✅ Tier-1 MCPSTANDARD reference impl (2026-04-27)
 **Version**: 3.0.0
 **Location**: `/home/administrator/projects/mcp/code-executor/`
+
+> 📐 **Canonical transport contract**: [`/home/administrator/projects/mcp/MCPSTANDARD.md`](../MCPSTANDARD.md). This is the reference implementation — every other Tier-1 MCP follows the same wrapper / dispatcher / keyfile pattern (`/usr/local/bin/mcp-code-executor`, `/usr/local/bin/mcp-dispatcher`, `/run/secrets/code-executor-<role>.key`). See [`MIGRATION-TO-MCPSTANDARD.md`](MIGRATION-TO-MCPSTANDARD.md) for the migration record.
 
 ---
 
@@ -14,8 +25,10 @@ Sandboxed TypeScript/Python execution environment that CONSUMES MCP tools via th
 
 **Architecture Role:**
 ```
-Admin/Developer → mcp-wrapper.sh → docker exec → mcp-server.ts → executor.ts → MCP Proxy → MCP Servers
+Admin/Developer (server-local)  → /usr/local/bin/mcp-code-executor → docker exec → mcp-server.ts → executor.ts → MCP Proxy → MCP Servers
+Admin/Developer (laptop, ssh)   → /usr/local/bin/mcp-dispatcher (allow-list) → /usr/local/bin/mcp-code-executor → (above)
 ```
+The shared root-owned wrapper resolves Linux group → role → keyfile and passes `MCP_KEY_FILE=/run/secrets/code-executor-<role>.key` into the container; the dispatcher is the single SSH entry-point that authorizes laptop keys to specific MCPs only.
 
 Code-executor provides:
 - Sandboxed execution environment (TypeScript/Python)

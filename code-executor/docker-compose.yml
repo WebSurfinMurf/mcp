@@ -16,8 +16,10 @@ services:
       - traefik-net
 
     # Ports
-    ports:
-      - "9091:3000"  # Executor API
+    # MCPSTANDARD §3a: no host ports published. Internal access only via
+    # `docker exec` (mcp-server.ts) or container-network DNS (mcp-code-executor:3000).
+    # Host port 9091 was previously published for debugging; verified 2026-04-27
+    # that no live consumer relies on it.
 
     # Environment
     environment:
@@ -36,6 +38,9 @@ services:
       - /home/administrator/projects/mcp/code-executor/roles.json:/app/roles.json:ro
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # MCPSTANDARD §3a: file-delivered keys at /run/secrets; container reads
+      # MCP_KEY_FILE pointing at /run/secrets/code-executor-<role>.key.
+      - /home/administrator/projects/secrets:/run/secrets:ro
 
     # Docker socket access (GID 127 = docker group on host)
     group_add:
