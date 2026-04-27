@@ -1,8 +1,8 @@
 # MCP service standard for linuxserver.lan
-**Status:** PROPOSAL v3 — Gemini + Codex + Claude review-board feedback integrated; pending websurfinmurf-claude per-device verification.
-**Authored by:** administrator-claude · 2026-04-26.
+**Status:** v3.1 PRODUCTION — code-executor reference implementation deployed and verified end-to-end (server-local + websurfinmurf laptop §8). Two §3c bugs caught during execution have been folded back into the standard.
+**Authored by:** administrator-claude · 2026-04-26 (v3); updated 2026-04-27 (v3.1 post-execution fixes).
 **Precedent:** `/mnt/shared/mcpfix.md` (websurfinmurf-claude's SSH-piped-stdio fix for code-executor).
-**Review history:** Gemini v1 (integrated → v2). Codex v2 + Claude review-board v2 (integrated → v3, see §9).
+**Review history:** Gemini v1 (integrated → v2). Codex v2 + Claude review-board v2 (integrated → v3, see §9). Code-executor migration 2026-04-27 (integrated → v3.1, see §10).
 
 This document proposes the **canonical pattern for all Tier-1 MCP services** on this server. Tier-1 = internal admin/developer tooling (per `~/projects/CLAUDE.md` "Platform Architecture Intent"). Tier-2 (external-facing apps via Traefik+Keycloak) is out of scope.
 
@@ -54,8 +54,9 @@ Claude Code
 - Long-running (`restart: unless-stopped`); naming `mcp-<name>` (container) and `<name>` as the MCP logical name.
 - On the docker network(s) needed for its backends.
 - Backend creds in container env, mounted from `/home/administrator/projects/secrets/<mcp-name>.env` (mode 0600 root-owned).
-- Mount the **secrets directory** read-only at `/run/secrets/` inside the container so keys are file-delivered, not env-delivered (see §3c).
+- Mount the **secrets directory** read-only at `/run/secrets/` inside the container so keys are file-delivered, not env-delivered (see §3c). The keyfile lives on the host at `/home/administrator/projects/secrets/<mcp-name>-<role>.key` and is bind-mounted into the container's `/run/secrets/` — same bytes, two views; the host path never moves. `/run/secrets/` is the FHS-conventional in-container location for runtime-only secrets.
 - Stdio MCP entry-point reads `MCP_KEY_FILE` (path inside container) at startup, validates with **SHA-256 + constant-time compare** against `keys.json` (root-owned in image, mounted read-only), refuses unknown keys.
+- **Container UID hardening — required for any service that also runs untrusted user code.** Long-lived container processes (e.g. an HTTP API, a code-executor sandbox, anything that processes attacker-influenced input) MUST run with a UID/GID that **cannot read** `/run/secrets/<mcp-name>-*.key` directly. The keyfile read happens only inside the short-lived MCP exec subprocess via `docker exec --user "<container-uid>:<role-gid>"` (see §3c). Without this, `chmod 0644` or `group_add: ["<role-gid>"]`-style fixes leak every role's keyfile to user code running in the same container, defeating the role boundary entirely. For containers that contain *only* the MCP entry-point and no other process surface, the constraint is trivially met.
 - Containers running Python: set `PYTHONUNBUFFERED=1` to avoid stdio buffering eating JSON-RPC. Equivalent flush guarantee for Node servers.
 - **Does NOT publish any host ports.** Access exclusively via `docker exec`.
 - **Symmetric to sshd-restart caveat (§6):** container restart kills all in-flight `docker exec` sessions and any in-flight tool call fails once. Self-heals on next invocation.
@@ -78,10 +79,15 @@ Claude Code
   IFS=$' \t\n'
   REAL_USER=$(id -un)
 
-  # Group resolution — exact match, not substring. grep -w breaks on hyphenated
-  # group names (e.g. "super-administrators" matches "administrators"); use
-  # getent + literal compare instead.
+  # Group resolution — exact match, not substring. Checks BOTH primary group
+  # (via id -gn) AND supplementary members. The primary-group check is the
+  # critical one: users whose role IS their primary group typically have an
+  # empty supplementary member list (e.g. `administrators:x:2000:` with no
+  # 4th-field members), and a supplementary-only check would silently miss
+  # them. grep -w also breaks on hyphenated group names ("super-administrators"
+  # matches "administrators"); literal compare via awk avoids that bug.
   in_group() {
+      [[ "$(id -gn "$REAL_USER")" == "$1" ]] && return 0
       local g
       while IFS= read -r g; do [[ "$g" == "$REAL_USER" ]] && return 0; done < <(
           getent group "$1" | awk -F: '{gsub(",","\n",$4); print $4}'
@@ -91,8 +97,10 @@ Claude Code
 
   if in_group administrators; then
       ROLE=administrator
+      ROLE_GID=$(getent group administrators | awk -F: '{print $3}')
   elif in_group developers; then
       ROLE=developer
+      ROLE_GID=$(getent group developers | awk -F: '{print $3}')
   else
       echo "FATAL: $REAL_USER not in administrators or developers" >&2
       exit 2
@@ -116,16 +124,23 @@ Claude Code
 
   # Key delivery: mount the keyfile into the container at a known path; pass
   # only the path via env. Avoids putting raw key bytes in argv/environ where
-  # /proc readers (host root, ps auxe) could harvest them.
+  # /proc readers (host root, ps auxe) could harvest them. The `--user
+  # <container-uid>:${ROLE_GID}` override binds keyfile read access to THIS
+  # exec subprocess only — long-lived container processes at the default UID
+  # cannot read the role keyfiles, even though /run/secrets is mounted into
+  # the same filesystem. This is what makes group_add / chmod 0644 unsafe and
+  # what makes this pattern safe (see §3a "Container UID hardening").
   exec docker exec -i \
+      --user "<container-uid>:${ROLE_GID}" \
       -e MCP_KEY_FILE="/run/secrets/<mcp-name>-${ROLE}.key" \
       -e MCP_SENDER_NAME="$MCP_SENDER_NAME" \
       -e MCP_ROLE="$ROLE" \
       mcp-<mcp-name> \
       <stdio entry-point command>
   ```
-- The container's compose file mounts `/home/administrator/projects/secrets/` read-only at `/run/secrets/` so the keyfile is reachable via `MCP_KEY_FILE`.
+- The container's compose file mounts `/home/administrator/projects/secrets/` read-only at `/run/secrets/` so the keyfile is reachable via `MCP_KEY_FILE`. The keyfile NEVER leaves `/home/administrator/projects/secrets/` on the host — the bind mount surfaces the same bytes inside the container at the FHS-conventional `/run/secrets/` path. **Replace `<container-uid>` with the UID the container's image runs under** (e.g. `1000` for a container whose Dockerfile ends with `USER node`); the role-group GID is read from the host's group database at wrapper time, so the same wrapper logic works on any host without hardcoding numeric GIDs.
 - No raw key in argv/env. Audit identity stamped from kernel-attested `id -un`, not client-supplied env.
+- **Verify role-bound key access after install.** From the host: `docker exec --user "<container-uid>:<other-role-gid>" mcp-<mcp-name> head -c 8 /run/secrets/<mcp-name>-<role>.key` MUST return `Permission denied` for the wrong role. If it succeeds, the role boundary is broken (likely the wrong UID:GID combo, or the keyfile owner/mode drifted).
 
 ### 3d. Server-side dispatcher at `/usr/local/bin/mcp-dispatcher`
 - New component, root-owned, mode `0755`. Single entry point invoked by every laptop SSH key.
@@ -361,6 +376,22 @@ Asked from the server side; answered from the laptop. Facts the server cannot di
 - Multi-server dispatcher abstraction. Claude review-board flagged this for >12-month horizon; YAGNI for now, the per-host pattern is fine.
 - `mcp-exec` helper to abstract `docker exec` away from the wrapper. Claude review-board's container-runtime-portability note; YAGNI — `docker exec` is the one supported runtime here.
 
+## 10. Changes from v3 (post-execution lessons from code-executor migration, 2026-04-27)
+
+Two real bugs surfaced when `code-executor` became the v3 reference implementation. Both are fixes to concrete failure modes observed in the running migration, not redesigns. Anyone reading the standard before this section should re-read §3a and §3c.
+
+**Must-fix integrated:**
+- §3c `in_group()` now also checks the user's PRIMARY group via `id -gn`. The supplementary-only check silently misses any user whose role IS their primary group with an empty supplementary list (e.g. an `administrator` user with `administrators` as primary GID and no supplementary members — `getent group administrators` returns `administrators:x:2000:`). On the linuxserver.lan reference host, this is the default user setup, so the previous standard's wrapper FATALed on legitimate calls.
+- §3c `docker exec` now MUST include `--user "<container-uid>:${ROLE_GID}"`. Without it, the container UID either can't read `/run/secrets/<role>.key` (mode 0640 root:role-group) at all, OR — if "fixed" with `chmod 0644` or `group_add` — leaks every role's keyfile to long-lived processes and any user-supplied code in the same container, defeating the role boundary entirely. The `--user` override binds keyfile read access to the short-lived MCP exec subprocess only.
+- §3a now states the container UID hardening requirement explicitly: long-lived processes that handle attacker-influenced input MUST run with a UID/GID that cannot read `/run/secrets/<role>.key`. The `--user` override is what implements this; standard now says so up-front rather than leaving it to be re-derived.
+- §3a now clarifies that `/run/secrets/` is the IN-CONTAINER mount path, not a host path — keyfiles never leave `~/projects/secrets/` on the host. (Previous wording could be misread as relocating the canonical home.)
+
+**Should-fix integrated:**
+- §3c wrapper now derives `ROLE_GID` dynamically from `getent group <role-group>` rather than hardcoding numeric GIDs, so the standard works on hosts where `administrators`/`developers` aren't 2000/3000.
+- §3c adds a post-install verification step: `docker exec --user "<container-uid>:<other-role-gid>"` reading the wrong role's keyfile MUST return `Permission denied`. Catches role-boundary regressions caused by drifted file ownership/mode.
+
+**Source:** code-executor `MIGRATION-TO-MCPSTANDARD.md §10` records the empirical evidence behind each fix (verified by `docker exec --user 1000:2000` reads admin key but is blocked on developer key; `docker exec --user 1000:1000` is blocked on both).
+
 ---
 
-*Once v3 is verified by websurfinmurf-claude on the laptop side (§8), code-executor migrates to it (relocating `mcp-wrapper.sh` to `/usr/local/bin/mcp-code-executor`, adding the dispatcher, switching to `restrict,command="..."`, raising ControlPersist). agent-memory adopts it from R1 of the build.*
+*v3.1 — code-executor is the production reference implementation. agent-memory v3 R1 adopts the same wrapper/dispatcher/keyfile pattern and inherits the §3a/§3c fixes from this section.*

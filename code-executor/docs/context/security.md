@@ -20,6 +20,7 @@
 - [IMPLEMENTED] `journalctl -t mcp-code-executor` — one line per wrapper invocation: `user=... role=... sender=...`.
 - [IMPLEMENTED] `journalctl -t mcp-dispatcher` — ACCEPT/REJECT lines for each laptop SSH attempt. Empty for server-local invocations (server-local bypasses dispatcher).
 - [IMPLEMENTED] Container logs (json-file driver, 10MB × 3 rotation) — tool execution traces from `executor.ts`.
+- **Note on `sender=user@<IP>-via-ssh`:** the IP is a *join key* into `/var/log/auth.log`, NOT the device-identity primitive. Stable device identity is the SSH key fingerprint, which sshd records on the same line as the IP+user (`sshd: Accepted publickey for ... from <IP> ... SHA256:<fp>`). To attribute a laptop across DHCP-lease changes, grep auth.log by user+timestamp, pull the fingerprint, then correlate against `~<user>/.ssh/authorized_keys` comments. Don't replace the wrapper IP with reverse-DNS hostname: hostnames are unauthenticated (PTR-spoofable on a compromised LAN) and add DNS latency to the cold-start §8.D3 budget. If self-contained audit lines ever become a hard requirement, enable `ExposeAuthInfo yes` in `sshd_config` and read `$SSH_AUTH_INFO_0` in the wrapper to embed the fingerprint directly. Decision recorded 2026-04-27.
 
 ## Laptop SSH access
 - [IMPLEMENTED, when configured] `authorized_keys` lines MUST start with `restrict,command="/usr/local/bin/mcp-dispatcher",no-user-rc`. Without this, the laptop key grants full shell access. The negative test (`ssh -T <user>@linuxserver.lan ls /` → MUST be FATAL) catches regression.
