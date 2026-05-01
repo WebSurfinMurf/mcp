@@ -67,6 +67,7 @@ class OptionsClient:
         self._ib: Optional[ib.IB] = None
         self._lock = asyncio.Lock()
         self._connected = False
+        self._monitor_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> bool:
         """Connect to IB Gateway"""
@@ -104,6 +105,58 @@ class OptionsClient:
         if not self._connected or not self._ib or not self._ib.isConnected():
             return await self.connect()
         return True
+
+    async def start_health_monitor(self) -> None:
+        """Start background liveness monitor (mirrors worker pool's pattern)."""
+        if self._monitor_task is None or self._monitor_task.done():
+            self._monitor_task = asyncio.create_task(self._health_monitor_loop())
+            logger.info(f"OptionsClient health monitor started (interval: {HEALTH_CHECK_INTERVAL}s)")
+
+    async def stop_health_monitor(self) -> None:
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _health_monitor_loop(self) -> None:
+        """Periodic liveness check via reqCurrentTime; reconnect on silent failure."""
+        consecutive_failures = 0
+        while True:
+            try:
+                await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+
+                healthy = False
+                if self._connected and self._ib and self._ib.isConnected():
+                    try:
+                        await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=10)
+                        healthy = True
+                        consecutive_failures = 0
+                    except Exception as e:
+                        logger.warning(f"OptionsClient liveness ping failed: {e!r}; forcing reconnect")
+                        self._connected = False
+                        if self._ib:
+                            try:
+                                self._ib.disconnect()
+                            except Exception:
+                                pass
+
+                if not healthy:
+                    consecutive_failures += 1
+                    backoff = min(5 * (2 ** (consecutive_failures - 1)), 60)
+                    logger.info(f"OptionsClient: reconnect attempt #{consecutive_failures} (next backoff {backoff}s if fails)")
+                    ok = await self.connect()
+                    if ok:
+                        consecutive_failures = 0
+                        logger.info("OptionsClient reconnected")
+                    else:
+                        await asyncio.sleep(backoff)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"OptionsClient monitor unexpected error: {e!r}")
+                await asyncio.sleep(5)
 
     async def get_stock_contract(self, symbol: str) -> Optional[ib.Stock]:
         """Get qualified stock contract"""
@@ -405,6 +458,7 @@ class OrdersClient:
         self._lock = asyncio.Lock()
         self._connected = False
         self._readonly = os.getenv("IB_READONLY", "true").lower() == "true"
+        self._monitor_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> bool:
         """Connect to IB Gateway"""
@@ -442,6 +496,58 @@ class OrdersClient:
         if not self._connected or not self._ib or not self._ib.isConnected():
             return await self.connect()
         return True
+
+    async def start_health_monitor(self) -> None:
+        """Start background liveness monitor (mirrors worker pool's pattern)."""
+        if self._monitor_task is None or self._monitor_task.done():
+            self._monitor_task = asyncio.create_task(self._health_monitor_loop())
+            logger.info(f"OrdersClient health monitor started (interval: {HEALTH_CHECK_INTERVAL}s)")
+
+    async def stop_health_monitor(self) -> None:
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _health_monitor_loop(self) -> None:
+        """Periodic liveness check via reqCurrentTime; reconnect on silent failure."""
+        consecutive_failures = 0
+        while True:
+            try:
+                await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+
+                healthy = False
+                if self._connected and self._ib and self._ib.isConnected():
+                    try:
+                        await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=10)
+                        healthy = True
+                        consecutive_failures = 0
+                    except Exception as e:
+                        logger.warning(f"OrdersClient liveness ping failed: {e!r}; forcing reconnect")
+                        self._connected = False
+                        if self._ib:
+                            try:
+                                self._ib.disconnect()
+                            except Exception:
+                                pass
+
+                if not healthy:
+                    consecutive_failures += 1
+                    backoff = min(5 * (2 ** (consecutive_failures - 1)), 60)
+                    logger.info(f"OrdersClient: reconnect attempt #{consecutive_failures} (next backoff {backoff}s if fails)")
+                    ok = await self.connect()
+                    if ok:
+                        consecutive_failures = 0
+                        logger.info("OrdersClient reconnected")
+                    else:
+                        await asyncio.sleep(backoff)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"OrdersClient monitor unexpected error: {e!r}")
+                await asyncio.sleep(5)
 
     async def get_option_contract(
         self,
@@ -1459,6 +1565,7 @@ async def lifespan(app: FastAPI):
         await options_client.connect()
     except Exception as e:
         logger.warning(f"Options client failed to connect on startup: {e}")
+    await options_client.start_health_monitor()
 
     # Initialize orders client for paper trading
     orders_client = OrdersClient(
@@ -1471,13 +1578,16 @@ async def lifespan(app: FastAPI):
         await orders_client.connect()
     except Exception as e:
         logger.warning(f"Orders client failed to connect on startup: {e}")
+    await orders_client.start_health_monitor()
 
     yield
 
     logger.info("Shutting down MCP IB Server")
     if orders_client:
+        await orders_client.stop_health_monitor()
         await orders_client.disconnect()
     if options_client:
+        await options_client.stop_health_monitor()
         await options_client.disconnect()
     await pool.shutdown()
 
@@ -1494,6 +1604,11 @@ async def health_check():
     options_connected = False
     if options_client:
         options_connected = options_client._connected and options_client._ib and options_client._ib.isConnected()
+
+    # Check orders client connection (used for /orders/* endpoints)
+    orders_connected = False
+    if orders_client:
+        orders_connected = orders_client._connected and orders_client._ib and orders_client._ib.isConnected()
 
     # Determine overall status - options_client is now the primary IB connection
     # Workers are only used for MCP protocol calls (get_account_summary, etc.)
@@ -1513,8 +1628,8 @@ async def health_check():
         status = "unhealthy"
     elif not ib_connected:
         status = "unhealthy"
-    elif not options_connected:
-        # Workers connected but options client not - degraded for options
+    elif not options_connected or not orders_connected:
+        # Any of the dedicated clients down → degraded (workers may still be fine for MCP)
         status = "degraded"
     else:
         status = "healthy"
@@ -1523,6 +1638,7 @@ async def health_check():
         "status": status,
         "ib_connected": ib_connected,
         "options_client_connected": options_connected,
+        "orders_client_connected": orders_connected,
         "service": MCP_SERVER_NAME,
         "ib_host": IB_HOST,
         "ib_port": IB_PORT,
